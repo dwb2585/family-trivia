@@ -5,11 +5,12 @@ import { TitleIntro } from "@/components/TitleIntro";
 interface HomeProps {
   onHost: () => void;
   onJoin: () => void;
+  onProfile: () => void;
   hasStoredGame: boolean;
   onResume?: () => void;
 }
 
-export function Home({ onHost, onJoin, hasStoredGame, onResume }: HomeProps) {
+export function Home({ onHost, onJoin, onProfile, hasStoredGame, onResume }: HomeProps) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-between px-5 py-8 stage-scanlines relative overflow-hidden">
       {/* Spotlight + velvet backdrop */}
@@ -33,6 +34,9 @@ export function Home({ onHost, onJoin, hasStoredGame, onResume }: HomeProps) {
           </Button>
           <Button onClick={onJoin} variant="secondary" size="xl" fullWidth>
             🎮 Join a Game
+          </Button>
+          <Button onClick={onProfile} variant="ghost" size="lg" fullWidth>
+            👤 Edit My Profile
           </Button>
 
           {hasStoredGame && onResume ? (

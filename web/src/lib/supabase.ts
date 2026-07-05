@@ -68,3 +68,20 @@ export interface Answer {
   is_correct: boolean;
   answered_at: string;
 }
+
+export interface Profile {
+  full_name: string;
+  facts: Record<string, string>;
+  updated_at: string;
+}
+
+/** A user-defined question about themselves (added via the profile screen). */
+export interface ProfileCustomFact {
+  id: string;
+  full_name: string;
+  prompt: string;        // "What's your favorite season?"
+  label: string;         // "favorite season" — used in question templates
+  value: string;         // "Autumn"
+  created_at: string;
+  updated_at: string;
+}

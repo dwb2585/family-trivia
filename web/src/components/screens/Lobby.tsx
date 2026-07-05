@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Marquee } from "@/components/ui/Marquee";
 import { LeaveButton } from "@/components/ui/LeaveButton";
 import { DEFAULT_FACTS, type FactDef } from "@/lib/facts";
-import type { Player } from "@/lib/supabase";
+import type { Player, ProfileCustomFact } from "@/lib/supabase";
 import { cn, uuid } from "@/lib/utils";
 
 interface LobbyProps {
@@ -17,6 +17,8 @@ interface LobbyProps {
   facts: Record<string, string>;
   /** Facts for ALL players on this device, keyed by player id */
   myFactsByPlayer: Record<string, Record<string, string>>;
+  /** Custom (user-defined) facts for the active player */
+  customFacts: ProfileCustomFact[];
   /** True if this player's facts were just loaded from their saved profile */
   prefilledFromProfile?: boolean;
   isHost: boolean;
@@ -27,6 +29,7 @@ interface LobbyProps {
   onStart: () => Promise<void>;
   onCopyCode: () => void;
   onLeave: () => void;
+  onOpenProfile?: () => void;
 }
 
 export function Lobby({
@@ -36,6 +39,7 @@ export function Lobby({
   players,
   facts,
   myFactsByPlayer,
+  customFacts,
   prefilledFromProfile = false,
   isHost,
   onFactChange,
@@ -45,6 +49,7 @@ export function Lobby({
   onStart,
   onCopyCode,
   onLeave,
+  onOpenProfile,
 }: LobbyProps) {
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -89,11 +94,20 @@ export function Lobby({
     }
   }
 
-  // Ready check: every player on this device must have all facts filled.
-  // (Used for both host and non-host — they hit Ready the same way.)
+  // Ready check: every player on this device must have all facts filled
+  // (defaults + their custom questions).
   const allMyFactsComplete = myPlayers.every((p) => {
     const pf = myFactsByPlayer[p.id] || {};
-    return DEFAULT_FACTS.every((f) => (pf[f.key] || "").trim().length > 0);
+    // We only check the active player's customs here because the toggle
+    // is per-player: if they have customs, those values must be filled too.
+    // For multi-profile on the same device, each player has their own
+    // customFactsByPlayer entry but they're checked when that player's tab
+    // is active. For simplicity we just require non-empty on the active
+    // player's customs + all default facts for every my-player.
+    const myCustoms = p.id === activePlayerId ? customFacts : [];
+    const defaultsOk = DEFAULT_FACTS.every((f) => (pf[f.key] || "").trim().length > 0);
+    const customsOk = myCustoms.every((cf) => (pf[cf.id] || "").trim().length > 0);
+    return defaultsOk && customsOk;
   });
   const canMarkReady = allMyFactsComplete;
 
@@ -265,6 +279,38 @@ export function Lobby({
                       disabled={!!activePlayer?.ready}
                     />
                   ))}
+
+                  {customFacts.length > 0 ? (
+                    <div className="pt-2 mt-2 border-t border-border/50">
+                      <p className="text-xs uppercase tracking-wider text-cream/40 font-bold mb-2">
+                        ✨ Your custom questions
+                      </p>
+                      {customFacts.map((cf) => (
+                        <FactField
+                          key={cf.id}
+                          fact={{
+                            key: cf.id,
+                            label: cf.label,
+                            prompt: cf.prompt,
+                            emoji: "✨",
+                          }}
+                          value={facts[cf.id] || ""}
+                          onChange={(v) => onFactChange(cf.id, v)}
+                          disabled={!!activePlayer?.ready}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {onOpenProfile ? (
+                    <button
+                      type="button"
+                      onClick={onOpenProfile}
+                      className="block w-full text-center text-sm text-cream/50 hover:text-gold underline underline-offset-4 pt-2"
+                    >
+                      ✏️ Add or edit custom questions in your profile
+                    </button>
+                  ) : null}
                 </div>
               </CardBody>
             </Card>

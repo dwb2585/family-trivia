@@ -1,16 +1,11 @@
 import { supabase } from "./supabase";
+import type { Profile, ProfileCustomFact } from "./supabase";
 import { DEFAULT_FACTS } from "./facts";
 
-export interface Profile {
-  full_name: string;
-  facts: Record<string, string>;
-  updated_at: string;
-}
+// ============================================================================
+// Default facts (the 8 built-in question keys, e.g. favorite_movie)
+// ============================================================================
 
-/**
- * Fetch a profile by full name (e.g. "Meg Shimizu").
- * Returns null if no profile exists yet for that name, or if facts is empty.
- */
 export async function getProfile(fullName: string): Promise<Profile | null> {
   if (!fullName || !fullName.trim()) return null;
   const { data, error } = await supabase
@@ -28,11 +23,6 @@ export async function getProfile(fullName: string): Promise<Profile | null> {
   return data as Profile;
 }
 
-/**
- * Upsert a profile. Only stores known fact_keys (from DEFAULT_FACTS) with
- * non-empty trimmed values, so we never pollute the profile with garbage
- * if the schema ever changes.
- */
 export async function upsertProfile(
   fullName: string,
   facts: Record<string, string>,
@@ -48,7 +38,6 @@ export async function upsertProfile(
     }
   }
 
-  // Nothing to save — skip rather than write an empty profile
   if (Object.keys(cleanFacts).length === 0) return;
 
   const { error } = await supabase
@@ -60,4 +49,67 @@ export async function upsertProfile(
   if (error) {
     console.warn("Failed to upsert profile for", fullName, error);
   }
+}
+
+// ============================================================================
+// Custom facts (user-defined questions beyond the 8 defaults)
+// ============================================================================
+
+export async function getCustomFacts(fullName: string): Promise<ProfileCustomFact[]> {
+  if (!fullName || !fullName.trim()) return [];
+  const { data, error } = await supabase
+    .from("profile_custom_facts")
+    .select("*")
+    .eq("full_name", fullName.trim())
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.warn("Failed to fetch custom facts for", fullName, error);
+    return [];
+  }
+  return (data ?? []) as ProfileCustomFact[];
+}
+
+export async function createCustomFact(
+  fullName: string,
+  prompt: string,
+  label: string,
+  value: string,
+): Promise<ProfileCustomFact | null> {
+  if (!fullName || !prompt.trim() || !label.trim()) return null;
+  const { data, error } = await supabase
+    .from("profile_custom_facts")
+    .insert({
+      full_name: fullName.trim(),
+      prompt: prompt.trim(),
+      label: label.trim(),
+      value: value.trim(),
+    })
+    .select()
+    .single();
+  if (error || !data) {
+    console.warn("Failed to create custom fact", error);
+    return null;
+  }
+  return data as ProfileCustomFact;
+}
+
+export async function updateCustomFact(
+  id: string,
+  patch: Partial<Pick<ProfileCustomFact, "prompt" | "label" | "value">>,
+): Promise<void> {
+  const clean: Record<string, string> = {};
+  if (patch.prompt !== undefined) clean.prompt = patch.prompt.trim();
+  if (patch.label !== undefined) clean.label = patch.label.trim();
+  if (patch.value !== undefined) clean.value = patch.value.trim();
+  if (Object.keys(clean).length === 0) return;
+  const { error } = await supabase
+    .from("profile_custom_facts")
+    .update(clean)
+    .eq("id", id);
+  if (error) console.warn("Failed to update custom fact", id, error);
+}
+
+export async function deleteCustomFact(id: string): Promise<void> {
+  const { error } = await supabase.from("profile_custom_facts").delete().eq("id", id);
+  if (error) console.warn("Failed to delete custom fact", id, error);
 }

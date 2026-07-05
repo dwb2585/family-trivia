@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { supabase, type Game, type Player, type Question, type Answer } from "@/lib/supabase";
+import { supabase, type Game, type Player, type Question, type Answer, type ProfileCustomFact } from "@/lib/supabase";
 import { uuid, randomCode } from "@/lib/utils";
 import { generateQuestions, scoreAnswer } from "@/lib/gameLogic";
-import { getProfile, upsertProfile } from "@/lib/profiles";
+import { getProfile, upsertProfile, getCustomFacts } from "@/lib/profiles";
 
 import { Home } from "@/components/screens/Home";
 import { CreateGame } from "@/components/screens/CreateGame";
@@ -10,8 +10,9 @@ import { JoinGame } from "@/components/screens/JoinGame";
 import { Lobby } from "@/components/screens/Lobby";
 import { GamePlay } from "@/components/screens/GamePlay";
 import { Final } from "@/components/screens/Final";
+import { ProfileScreen } from "@/components/screens/ProfileScreen";
 
-type Phase = "home" | "create" | "join" | "lobby" | "playing" | "finished";
+type Phase = "home" | "create" | "join" | "profile" | "lobby" | "playing" | "finished";
 
 interface Session {
   clientId: string;
@@ -49,6 +50,10 @@ export default function App() {
   // Player IDs whose facts were prefilled from a saved profile on lobby entry.
   // Used by Lobby to show a "welcome back" indicator.
   const [prefilledFromProfile, setPrefilledFromProfile] = useState<Set<string>>(() => new Set());
+  // Custom facts (user-defined questions) for each my-player. Used by Lobby
+  // to render extra input fields below the 8 defaults, and by handleStart
+  // to build proper prompts for question generation.
+  const [customFactsByPlayer, setCustomFactsByPlayer] = useState<Record<string, ProfileCustomFact[]>>({});
 
   const clientIdRef = useRef(session?.clientId || uuid());
 
@@ -228,7 +233,10 @@ export default function App() {
 
       // Prefill facts from the player's saved profile, if one exists.
       // This is how returning players don't have to re-type all 8 facts.
-      const profile = await getProfile(name);
+      const [profile, customFacts] = await Promise.all([
+        getProfile(name),
+        getCustomFacts(name),
+      ]);
       if (profile) {
         setFactsByPlayer((prev) => ({
           ...prev,
@@ -244,6 +252,27 @@ export default function App() {
         setFactsByPlayer((prev) =>
           prev[p.id] ? prev : { ...prev, [p.id]: {} },
         );
+      }
+
+      // Custom facts — stored separately so Lobby can render the prompts
+      // as additional input fields. Their VALUES go into player_facts at
+      // game time (with fact_key = custom.id), so they flow into question
+      // generation like default facts.
+      if (customFacts.length > 0) {
+        setCustomFactsByPlayer((prev) => ({ ...prev, [p.id]: customFacts }));
+        // Pre-fill their values into the facts map so the form shows them.
+        setFactsByPlayer((prev) => {
+          const cur = prev[p.id] || {};
+          let changed = false;
+          const next = { ...cur };
+          for (const cf of customFacts) {
+            if (!next[cf.id] && cf.value) {
+              next[cf.id] = cf.value;
+              changed = true;
+            }
+          }
+          return changed ? { ...prev, [p.id]: next } : prev;
+        });
       }
 
       const newSession: Session = {
@@ -366,10 +395,24 @@ export default function App() {
       .select("*")
       .in("player_id", ids);
 
+    // Fetch custom fact metadata for all players in the game so question
+    // generation can build proper prompts for user-defined questions.
+    const playerNames = (playersAll ?? []).map((p: Player) => p.name);
+    const { data: customFactsAll } = await supabase
+      .from("profile_custom_facts")
+      .select("*")
+      .in("full_name", playerNames);
+
+    const customFactMetadata: Record<string, { label: string; prompt: string }> = {};
+    for (const cf of customFactsAll ?? []) {
+      customFactMetadata[cf.id] = { label: cf.label, prompt: cf.prompt };
+    }
+
     const generated = generateQuestions({
       gameId: game.id,
       players: (playersAll ?? []) as Player[],
       facts: (factsAll ?? []) as { id: string; player_id: string; fact_key: string; fact_value: string }[],
+      customFactMetadata,
     });
 
     if (generated.length === 0) {
@@ -536,6 +579,7 @@ export default function App() {
       <Home
         onHost={() => setPhase("create")}
         onJoin={() => setPhase("join")}
+        onProfile={() => setPhase("profile")}
         hasStoredGame={!!session?.gameId}
         onResume={handleResume}
       />
@@ -550,6 +594,10 @@ export default function App() {
     return <JoinGame onSubmit={handleJoin} onBack={() => setPhase("home")} />;
   }
 
+  if (phase === "profile") {
+    return <ProfileScreen onBack={() => setPhase("home")} />;
+  }
+
   if (phase === "lobby" && game && me) {
     return (
       <Lobby
@@ -559,6 +607,7 @@ export default function App() {
         players={players}
         facts={myFacts}
         myFactsByPlayer={myFactsByPlayer}
+        customFacts={customFactsByPlayer[me.id] || []}
         prefilledFromProfile={prefilledFromProfile.has(me.id)}
         onFactChange={handleFactChange}
         onSetActive={handleSetActivePlayer}
@@ -567,6 +616,7 @@ export default function App() {
         onStart={handleStart}
         onCopyCode={handleCopyCode}
         onLeave={handleLeave}
+        onOpenProfile={() => setPhase("profile")}
         isHost={!!session?.hostToken}
       />
     );
