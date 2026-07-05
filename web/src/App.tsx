@@ -418,6 +418,10 @@ export default function App() {
     if (generated.length === 0) {
       throw new Error("Not enough facts to generate questions. Make sure everyone entered at least one fact.");
     }
+    // 2026-07-05: facts are now optional. Players can submit with as few as
+    // one fact, so the host sees this error only when literally nothing was
+    // entered across the whole game (which should be impossible given the
+    // Lobby gate, but kept as a defensive check).
 
     const { error: insErr } = await supabase.from("questions").insert(generated);
     if (insErr) throw new Error(insErr.message);

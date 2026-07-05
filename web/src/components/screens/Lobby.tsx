@@ -94,22 +94,26 @@ export function Lobby({
     }
   }
 
-  // Ready check: every player on this device must have all facts filled
-  // (defaults + their custom questions).
-  const allMyFactsComplete = myPlayers.every((p) => {
+  // Ready check — none of the 28 default facts are required anymore.
+  // Players can fill in as many or as few as they want; missing fields
+  // just won't generate questions about them. We only require *at least
+  // one* fact filled across every my-player so the host can actually start
+  // a game with question material to draw from.
+  const totalFactsEntered = myPlayers.reduce((acc, p) => {
     const pf = myFactsByPlayer[p.id] || {};
-    // We only check the active player's customs here because the toggle
-    // is per-player: if they have customs, those values must be filled too.
-    // For multi-profile on the same device, each player has their own
-    // customFactsByPlayer entry but they're checked when that player's tab
-    // is active. For simplicity we just require non-empty on the active
-    // player's customs + all default facts for every my-player.
-    const myCustoms = p.id === activePlayerId ? customFacts : [];
-    const defaultsOk = DEFAULT_FACTS.every((f) => (pf[f.key] || "").trim().length > 0);
-    const customsOk = myCustoms.every((cf) => (pf[cf.id] || "").trim().length > 0);
-    return defaultsOk && customsOk;
-  });
-  const canMarkReady = allMyFactsComplete;
+    return (
+      acc +
+      Object.values(pf).filter((v) => (v || "").trim().length > 0).length
+    );
+  }, 0);
+  const canMarkReady = totalFactsEntered > 0;
+  // Count of facts the *active* player has filled — shown next to "Ready"
+  // so it's clear how many questions they'll get.
+  const activeEnteredCount = myPlayers[0]?.id === activePlayerId
+    ? Object.values(myFactsByPlayer[activePlayerId] || {}).filter(
+        (v) => (v || "").trim().length > 0,
+      ).length
+    : 0;
 
   return (
     <div className="min-h-screen flex flex-col px-4 py-6 stage-scanlines relative">
@@ -262,10 +266,10 @@ export function Lobby({
                 </CardTitle>
                 <p className="text-foreground/60 text-xs mt-1">
                   {activePlayer?.ready
-                    ? "Locked in. Switch tabs to edit another player."
+                    ? `Locked in. ${activeEnteredCount} fact${activeEnteredCount === 1 ? "" : "s"} in the pool.`
                     : prefilledFromProfile
                     ? "✨ Loaded from your saved profile — edit if anything's changed."
-                    : "Others will try to guess these. Specific = funnier."}
+                    : "Fill in as many or as few as you want. Skip what doesn't fit. Specific = funnier."}
                 </p>
               </CardHeader>
               <CardBody className="pt-2">
@@ -330,8 +334,8 @@ export function Lobby({
                 disabled={!canMarkReady}
               >
                 {!canMarkReady
-                  ? "Fill in all facts first"
-                  : `🎯 I'm Ready (${myPlayers.filter((p) => p.ready).length}/${myPlayers.length})`}
+                  ? `Enter at least 1 fact to start (${totalFactsEntered} so far)`
+                  : `✓ Submit & Start (${totalFactsEntered} fact${totalFactsEntered === 1 ? "" : "s"})`}
               </Button>
             ) : (
               // All my players are ready — now show Start options
@@ -361,8 +365,8 @@ export function Lobby({
               {allMyReady
                 ? "✓ You're ready — waiting for host"
                 : !canMarkReady
-                ? "Fill in all facts first"
-                : `🎯 I'm Ready (${myPlayers.filter((p) => p.ready).length}/${myPlayers.length})`}
+                ? `Enter at least 1 fact (${totalFactsEntered} so far)`
+                : `✓ Submit & Ready (${totalFactsEntered} fact${totalFactsEntered === 1 ? "" : "s"})`}
             </Button>
           )}
         </div>
