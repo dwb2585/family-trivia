@@ -28,8 +28,9 @@ create table if not exists players (
   ready boolean not null default false,
   joined_at timestamptz not null default now()
 );
--- Note: no unique constraint on (game_id, client_id) so one device
--- can host multiple players (e.g., a parent filling out for a kid).
+-- Drop the unique constraint if it was added in an earlier version of this migration.
+-- (Allows one device to host multiple players — e.g., a parent filling out for a kid.)
+alter table players drop constraint if exists players_game_id_client_id_key;
 create index if not exists players_game_id_idx on players (game_id);
 create index if not exists players_client_id_idx on players (client_id);
 
