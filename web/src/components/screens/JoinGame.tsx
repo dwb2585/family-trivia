@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { FamilyMemberSelect } from "@/components/ui/Select";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Marquee } from "@/components/ui/Marquee";
 
@@ -54,20 +55,18 @@ export function JoinGame({ onSubmit, onBack, initialCode = "" }: JoinGameProps) 
                 maxLength={4}
                 autoFocus={!initialCode}
               />
-              <Input
-                label="Your name"
-                placeholder="e.g. Cousin Maya"
+              <FamilyMemberSelect
+                label="Who's playing?"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={24}
-                autoFocus={!!initialCode}
+                onChange={setName}
+                allowCustom
               />
 
               {error ? (
                 <p className="text-danger text-sm">{error}</p>
               ) : null}
 
-              <Button type="submit" size="lg" fullWidth loading={loading}>
+              <Button type="submit" size="lg" fullWidth loading={loading} disabled={!code.trim() || !name.trim()}>
                 Join Game 🎮
               </Button>
               <button

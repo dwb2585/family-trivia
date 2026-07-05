@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { FamilyMemberSelect } from "@/components/ui/Select";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Marquee } from "@/components/ui/Marquee";
 
@@ -43,20 +44,18 @@ export function CreateGame({ onSubmit, onBack }: CreateGameProps) {
           </CardHeader>
           <CardBody>
             <form onSubmit={handleSubmit} className="space-y-5">
-              <Input
-                label="Your name"
-                placeholder="e.g. Uncle Dave"
+              <FamilyMemberSelect
+                label="Who's hosting?"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoFocus
-                maxLength={24}
+                onChange={setName}
+                allowCustom
               />
 
               {error ? (
                 <p className="text-danger text-sm">{error}</p>
               ) : null}
 
-              <Button type="submit" size="lg" fullWidth loading={loading}>
+              <Button type="submit" size="lg" fullWidth loading={loading} disabled={!name.trim()}>
                 Create Game 🎤
               </Button>
               <button

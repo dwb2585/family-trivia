@@ -1,12 +1,5 @@
 import { motion, useReducedMotion } from "framer-motion";
-
-const NAMES = [
-  { letter: "C", name: "Crosse" },
-  { letter: "W", name: "Wobbekind" },
-  { letter: "A", name: "Arts" },
-  { letter: "B", name: "Battersby" },
-  { letter: "S", name: "Shimizu" },
-];
+import { SURNAMES } from "@/lib/family";
 
 // Each letter FIRES from deep behind the camera plane, spinning like a tossed
 // object, and SLAMS into the front of the screen. Stagger means they don't
@@ -44,13 +37,14 @@ export function TitleIntro() {
     >
       {/* CWABS — each letter is its own animated span on its own 3D layer */}
       <div className="flex justify-center items-center gap-1 sm:gap-2 md:gap-3 mb-5">
-        {NAMES.map((item, i) => {
+        {SURNAMES.map((item, i) => {
           const fly = FLY_IN[i];
           return (
             <motion.span
               key={item.letter}
-              className="font-display text-7xl sm:text-8xl md:text-9xl text-gold leading-none inline-block"
+              className="font-display text-7xl sm:text-8xl md:text-9xl leading-none inline-block"
               style={{
+                color: item.color,
                 textShadow:
                   "0 0 50px hsl(var(--gold-glow) / 0.7), 0 8px 0 hsl(var(--velvet) / 0.75), 0 14px 35px rgba(0,0,0,0.65)",
                 transformStyle: "preserve-3d",
@@ -81,16 +75,11 @@ export function TitleIntro() {
                 skipAnim
                   ? { duration: 0 }
                   : {
-                      // Stagger: each letter launches a beat after the previous
                       delay: fly.delay,
-                      // Spring for impact — high stiffness = hard crash,
-                      // low damping = bounce on landing
                       type: "spring",
                       stiffness: 240,
                       damping: 7,
                       mass: 1.4,
-                      // Per-axis easing: x/y land fast, z keeps a tiny
-                      // overshoot for that "smack" feel
                     }
               }
             >
@@ -111,7 +100,7 @@ export function TitleIntro() {
             : { delay: 2.25, duration: 0.6, ease: "easeOut" }
         }
       >
-        {NAMES.map((item) => (
+        {SURNAMES.map((item) => (
           <span
             key={item.name}
             className="text-cream/70 text-xs sm:text-sm uppercase tracking-[0.25em] font-bold"
