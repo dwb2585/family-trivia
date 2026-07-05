@@ -15,6 +15,8 @@ interface LobbyProps {
   activePlayerId: string;
   players: Player[];
   facts: Record<string, string>;
+  /** Facts for ALL players on this device, keyed by player id */
+  myFactsByPlayer: Record<string, Record<string, string>>;
   /** True if this player's facts were just loaded from their saved profile */
   prefilledFromProfile?: boolean;
   isHost: boolean;
@@ -33,6 +35,7 @@ export function Lobby({
   activePlayerId,
   players,
   facts,
+  myFactsByPlayer,
   prefilledFromProfile = false,
   isHost,
   onFactChange,
@@ -86,12 +89,13 @@ export function Lobby({
     }
   }
 
-  // The "I'm ready" check needs at least all my players to have facts.
-  const factsComplete = DEFAULT_FACTS.every((f) => (facts[f.key] || "").trim().length > 0);
-  const allMyHaveFacts = myPlayers.every(
-    (p) => p.id === activePlayerId || allMyReady /* other players already marked ready */,
-  );
-  const canMarkReady = factsComplete && allMyHaveFacts;
+  // Ready check: every player on this device must have all facts filled.
+  // (Used for both host and non-host — they hit Ready the same way.)
+  const allMyFactsComplete = myPlayers.every((p) => {
+    const pf = myFactsByPlayer[p.id] || {};
+    return DEFAULT_FACTS.every((f) => (pf[f.key] || "").trim().length > 0);
+  });
+  const canMarkReady = allMyFactsComplete;
 
   return (
     <div className="min-h-screen flex flex-col px-4 py-6 stage-scanlines relative">
@@ -270,21 +274,35 @@ export function Lobby({
         {/* Action button */}
         <div className="sticky bottom-0 pt-4 pb-2 bg-gradient-to-t from-stage via-stage to-transparent">
           {isHost ? (
-            <Button
-              onClick={handleStart}
-              size="xl"
-              fullWidth
-              loading={starting}
-              disabled={!allMyReady || players.length < 2}
-            >
-              {!allMyReady
-                ? "Mark yourself ready first"
-                : players.length < 2
-                ? "Waiting for players…"
-                : !everyoneReady
-                ? `Start anyway (${players.filter((p) => p.ready).length}/${players.length} ready)`
-                : "🎬 Start Game"}
-            </Button>
+            !allMyReady ? (
+              // Host needs to mark themselves ready before Start becomes available
+              <Button
+                onClick={handleReady}
+                size="xl"
+                fullWidth
+                loading={saving}
+                disabled={!canMarkReady}
+              >
+                {!canMarkReady
+                  ? "Fill in all facts first"
+                  : `🎯 I'm Ready (${myPlayers.filter((p) => p.ready).length}/${myPlayers.length})`}
+              </Button>
+            ) : (
+              // All my players are ready — now show Start options
+              <Button
+                onClick={handleStart}
+                size="xl"
+                fullWidth
+                loading={starting}
+                disabled={players.length < 2}
+              >
+                {players.length < 2
+                  ? "Waiting for players…"
+                  : !everyoneReady
+                  ? `Start anyway (${players.filter((p) => p.ready).length}/${players.length} ready)`
+                  : "🎬 Start Game"}
+              </Button>
+            )
           ) : (
             <Button
               onClick={handleReady}
@@ -296,7 +314,7 @@ export function Lobby({
             >
               {allMyReady
                 ? "✓ You're ready — waiting for host"
-                : !factsComplete
+                : !canMarkReady
                 ? "Fill in all facts first"
                 : `🎯 I'm Ready (${myPlayers.filter((p) => p.ready).length}/${myPlayers.length})`}
             </Button>

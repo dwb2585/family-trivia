@@ -502,6 +502,16 @@ export default function App() {
     [me, factsByPlayer],
   );
 
+  // Facts for ALL players on this device, keyed by player id. Used by the
+  // Lobby to check whether every my-player has all 8 facts filled in.
+  const myFactsByPlayer = useMemo(() => {
+    const map: Record<string, Record<string, string>> = {};
+    for (const p of myPlayers) {
+      map[p.id] = factsByPlayer[p.id] || {};
+    }
+    return map;
+  }, [myPlayers, factsByPlayer]);
+
   // ---- Render ----
   if (phase === "home") {
     return (
@@ -530,6 +540,7 @@ export default function App() {
         activePlayerId={me.id}
         players={players}
         facts={myFacts}
+        myFactsByPlayer={myFactsByPlayer}
         prefilledFromProfile={prefilledFromProfile.has(me.id)}
         onFactChange={handleFactChange}
         onSetActive={handleSetActivePlayer}
