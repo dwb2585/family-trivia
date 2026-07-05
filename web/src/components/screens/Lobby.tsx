@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Marquee } from "@/components/ui/Marquee";
+import { LeaveButton } from "@/components/ui/LeaveButton";
 import { DEFAULT_FACTS, type FactDef } from "@/lib/facts";
 import type { Player } from "@/lib/supabase";
 import { cn, uuid } from "@/lib/utils";
@@ -23,6 +24,7 @@ interface LobbyProps {
   onReady: () => Promise<void>;
   onStart: () => Promise<void>;
   onCopyCode: () => void;
+  onLeave: () => void;
 }
 
 export function Lobby({
@@ -39,6 +41,7 @@ export function Lobby({
   onReady,
   onStart,
   onCopyCode,
+  onLeave,
 }: LobbyProps) {
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -93,6 +96,15 @@ export function Lobby({
   return (
     <div className="min-h-screen flex flex-col px-4 py-6 stage-scanlines relative">
       <div className="absolute inset-0 bg-stage-radial pointer-events-none" />
+
+      <LeaveButton
+        onLeave={onLeave}
+        warning={
+          isHost && players.length > 1
+            ? "You're the host — the game will end for everyone."
+            : undefined
+        }
+      />
 
       <div className="relative z-10 w-full max-w-2xl mx-auto flex-1 flex flex-col">
         <Marquee className="mb-4" />

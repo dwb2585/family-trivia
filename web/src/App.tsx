@@ -537,6 +537,7 @@ export default function App() {
         onReady={handleReady}
         onStart={handleStart}
         onCopyCode={handleCopyCode}
+        onLeave={handleLeave}
         isHost={!!session?.hostToken}
       />
     );
@@ -559,6 +560,7 @@ export default function App() {
         onReveal={handleReveal}
         onNext={handleNext}
         onSetActive={handleSetActivePlayer}
+        onLeave={handleLeave}
       />
     );
   }

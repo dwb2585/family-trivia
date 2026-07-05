@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Marquee } from "@/components/ui/Marquee";
+import { LeaveButton } from "@/components/ui/LeaveButton";
 import type { Answer, Player, Question } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +23,7 @@ interface GamePlayProps {
   onReveal: () => Promise<void>;
   onNext: () => Promise<void>;
   onSetActive: (playerId: string) => void;
+  onLeave: () => void;
 }
 
 export function GamePlay({
@@ -39,6 +41,7 @@ export function GamePlay({
   onReveal,
   onNext,
   onSetActive,
+  onLeave,
 }: GamePlayProps) {
   const [answering, setAnswering] = useState(false);
   const [countdown, setCountdown] = useState(15);
@@ -71,6 +74,15 @@ export function GamePlay({
   return (
     <div className="min-h-screen flex flex-col px-4 py-6 stage-scanlines relative">
       <div className="absolute inset-0 bg-stage-radial pointer-events-none" />
+
+      <LeaveButton
+        onLeave={onLeave}
+        warning={
+          isHost
+            ? "You're the host — the game will end for everyone."
+            : undefined
+        }
+      />
 
       <div className="relative z-10 w-full max-w-2xl mx-auto flex-1 flex flex-col">
         <Marquee className="mb-4" />
