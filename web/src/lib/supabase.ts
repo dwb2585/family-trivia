@@ -52,6 +52,8 @@ export interface Question {
   question_index: number;
   subject_player_id: string;
   fact_key: string;
+  /** Question format — 'multiple-choice' for old format, 'who-said-it' for dropdown */
+  mode: "multiple-choice" | "who-said-it";
   question_text: string;
   options: string[];
   correct_option_index: number;

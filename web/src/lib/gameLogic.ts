@@ -8,6 +8,21 @@ export interface GenerateInput {
   facts: PlayerFact[];
 }
 
+export type QuestionMode = "multiple-choice" | "who-said-it";
+
+/**
+ * Pick the question format based on player count.
+ *
+ * - 4+ players → "who-said-it": "Whose [fact] is [value]?" with a dropdown of
+ *   every player in the game. Way harder and more interesting once you have
+ *   enough people to actually confuse.
+ * - 2-3 players → "multiple-choice": "What's X's [fact]?" with 4 fact-value
+ *   options. Still works fine with a small pool.
+ */
+export function chooseQuestionMode(players: Player[]): QuestionMode {
+  return players.length >= 4 ? "who-said-it" : "multiple-choice";
+}
+
 /**
  * Build multiple-choice trivia questions from the players' self-reported facts.
  *
@@ -17,15 +32,13 @@ export interface GenerateInput {
  *   3. Randomized question prompt via buildQuestionText (4-5 phrasings per key)
  *   4. Shuffled answer-option order
  *
- * With 14 players × QUESTIONS_PER_FACT=2 = 28 questions, and ~5 prompt
- * variants per fact_key, the chance of seeing the exact same question twice
- * across two games is very low — even with identical facts.
- *
- * Distractors come from OTHER players' same-key facts (so the wrong answers
- * are people you know). Pads with the subject's other facts if there aren't
- * enough other players to fill 3 distractors.
+ * For 4+ players the format flips to "who-said-it": question names the
+ * fact_value ("Whose favorite movie is Jurassic Park?") and the player
+ * picks from a dropdown of everyone in the game.
  */
 export function generateQuestions({ gameId, players, facts }: GenerateInput): Omit<Question, "id">[] {
+  const mode = chooseQuestionMode(players);
+
   // Map player_id -> facts[]
   const factsByPlayer = new Map<string, PlayerFact[]>();
   for (const p of players) factsByPlayer.set(p.id, []);
@@ -46,44 +59,67 @@ export function generateQuestions({ gameId, players, facts }: GenerateInput): Om
     const picked = shuffle(subjectFacts).slice(0, QUESTIONS_PER_FACT);
 
     for (const fact of picked) {
-      // Distractors = same fact_key from OTHER players
-      const distractors: string[] = [];
-      const otherFacts = facts.filter(
-        (f) => f.fact_key === fact.fact_key && f.player_id !== subject.id,
-      );
-      for (const f of shuffle(otherFacts)) {
-        if (distractors.length >= 3) break;
-        if (!distractors.includes(f.fact_value)) {
-          distractors.push(f.fact_value);
-        }
-      }
-      // Pad with subject's other facts if not enough distractors
-      let padIdx = 0;
-      while (distractors.length < 3 && subjectFacts.length > 0) {
-        const candidate = subjectFacts[padIdx % subjectFacts.length];
-        padIdx++;
-        if (
-          candidate.fact_value !== fact.fact_value &&
-          !distractors.includes(candidate.fact_value)
-        ) {
-          distractors.push(candidate.fact_value);
-        }
-        if (padIdx > 20) break; // safety
-      }
+      const def = DEFAULT_FACTS.find((d) => d.key === fact.fact_key);
+      const label = def?.label ?? fact.fact_key.replace(/_/g, " ");
 
-      const options = shuffle([fact.fact_value, ...distractors]);
-      const correctIndex = options.indexOf(fact.fact_value);
+      if (mode === "who-said-it") {
+        // Question names the value, dropdown of player names is the answer set.
+        // options[] = shuffled player names. correct_option_index = subject.
+        const options = shuffle(players.map((p) => p.name));
+        const correctIndex = options.indexOf(subject.name);
 
-      questions.push({
-        game_id: gameId,
-        question_index: idx++,
-        subject_player_id: subject.id,
-        fact_key: fact.fact_key,
-        question_text: buildQuestionText(subject.name, fact.fact_key),
-        options,
-        correct_option_index: correctIndex,
-        points: 100,
-      });
+        questions.push({
+          game_id: gameId,
+          question_index: idx++,
+          subject_player_id: subject.id,
+          fact_key: fact.fact_key,
+          mode: "who-said-it",
+          question_text: `Whose ${label} is ${fact.fact_value}?`,
+          options,
+          correct_option_index: correctIndex,
+          points: 100,
+        });
+      } else {
+        // Distractors = same fact_key from OTHER players
+        const distractors: string[] = [];
+        const otherFacts = facts.filter(
+          (f) => f.fact_key === fact.fact_key && f.player_id !== subject.id,
+        );
+        for (const f of shuffle(otherFacts)) {
+          if (distractors.length >= 3) break;
+          if (!distractors.includes(f.fact_value)) {
+            distractors.push(f.fact_value);
+          }
+        }
+        // Pad with subject's other facts if not enough distractors
+        let padIdx = 0;
+        while (distractors.length < 3 && subjectFacts.length > 0) {
+          const candidate = subjectFacts[padIdx % subjectFacts.length];
+          padIdx++;
+          if (
+            candidate.fact_value !== fact.fact_value &&
+            !distractors.includes(candidate.fact_value)
+          ) {
+            distractors.push(candidate.fact_value);
+          }
+          if (padIdx > 20) break; // safety
+        }
+
+        const options = shuffle([fact.fact_value, ...distractors]);
+        const correctIndex = options.indexOf(fact.fact_value);
+
+        questions.push({
+          game_id: gameId,
+          question_index: idx++,
+          subject_player_id: subject.id,
+          fact_key: fact.fact_key,
+          mode: "multiple-choice",
+          question_text: buildQuestionText(subject.name, fact.fact_key),
+          options,
+          correct_option_index: correctIndex,
+          points: 100,
+        });
+      }
     }
   }
 
