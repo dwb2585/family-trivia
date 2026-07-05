@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, type Game, type Player, type Question, type Answer } from "@/lib/supabase";
 import { uuid, randomCode } from "@/lib/utils";
 import { generateQuestions, scoreAnswer } from "@/lib/gameLogic";
+import { getProfile, upsertProfile } from "@/lib/profiles";
 
 import { Home } from "@/components/screens/Home";
 import { CreateGame } from "@/components/screens/CreateGame";
@@ -45,6 +46,9 @@ export default function App() {
   const [factsByPlayer, setFactsByPlayer] = useState<Record<string, Record<string, string>>>({});
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Answer[]>([]);
+  // Player IDs whose facts were prefilled from a saved profile on lobby entry.
+  // Used by Lobby to show a "welcome back" indicator.
+  const [prefilledFromProfile, setPrefilledFromProfile] = useState<Set<string>>(() => new Set());
 
   const clientIdRef = useRef(session?.clientId || uuid());
 
@@ -203,6 +207,27 @@ export default function App() {
         .select()
         .single();
       if (error || !p) throw new Error(error?.message || "Could not add player");
+
+      // Prefill facts from the player's saved profile, if one exists.
+      // This is how returning players don't have to re-type all 8 facts.
+      const profile = await getProfile(name);
+      if (profile) {
+        setFactsByPlayer((prev) => ({
+          ...prev,
+          [p.id]: { ...profile.facts },
+        }));
+        setPrefilledFromProfile((prev) => {
+          const next = new Set(prev);
+          next.add(p.id);
+          return next;
+        });
+      } else {
+        // No profile yet — ensure an entry exists so Lobby doesn't show stale data
+        setFactsByPlayer((prev) =>
+          prev[p.id] ? prev : { ...prev, [p.id]: {} },
+        );
+      }
+
       const newSession: Session = {
         clientId: clientIdRef.current,
         gameId,
@@ -287,10 +312,12 @@ export default function App() {
   }, []);
 
   const handleReady = useCallback(async () => {
-    // Mark all my players ready + persist their facts.
+    // Mark all my players ready + persist their facts (this game) AND update
+    // their profile (across games) so next time they don't re-enter.
     for (const p of myPlayers) {
       const pf = factsByPlayer[p.id] || {};
       await persistFacts(p.id, pf);
+      await upsertProfile(p.name, pf);
       const { error } = await supabase
         .from("players")
         .update({ ready: true })
@@ -303,7 +330,12 @@ export default function App() {
     if (!game || !session?.hostToken) throw new Error("Only the host can start");
 
     // Persist host's facts too (in case they hit Start without clicking Ready).
-    if (me) await persistFacts(me.id, factsByPlayer[me.id] || {});
+    // And update their profile so the next game has them prefilled.
+    if (me) {
+      const pf = factsByPlayer[me.id] || {};
+      await persistFacts(me.id, pf);
+      await upsertProfile(me.name, pf);
+    }
 
     const [{ data: playersAll }, { data: playerIds }] = await Promise.all([
       supabase.from("players").select("*").eq("game_id", game.id),
@@ -498,6 +530,7 @@ export default function App() {
         activePlayerId={me.id}
         players={players}
         facts={myFacts}
+        prefilledFromProfile={prefilledFromProfile.has(me.id)}
         onFactChange={handleFactChange}
         onSetActive={handleSetActivePlayer}
         onAddPlayer={handleAddPlayer}

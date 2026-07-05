@@ -1,5 +1,5 @@
 import type { Player, PlayerFact, Question } from "./supabase";
-import { DEFAULT_FACTS, QUESTIONS_PER_FACT } from "./facts";
+import { DEFAULT_FACTS, QUESTIONS_PER_FACT, buildQuestionText } from "./facts";
 import { shuffle } from "./utils";
 
 export interface GenerateInput {
@@ -10,8 +10,20 @@ export interface GenerateInput {
 
 /**
  * Build multiple-choice trivia questions from the players' self-reported facts.
- * For each player, pick a few of their facts and create questions asking the
- * other players to guess. The subject player is excluded from answering.
+ *
+ * Variety levers per game:
+ *   1. Random subject ordering (final shuffle)
+ *   2. Random fact_key selection per subject (QUESTIONS_PER_FACT of 8)
+ *   3. Randomized question prompt via buildQuestionText (4-5 phrasings per key)
+ *   4. Shuffled answer-option order
+ *
+ * With 14 players × QUESTIONS_PER_FACT=2 = 28 questions, and ~5 prompt
+ * variants per fact_key, the chance of seeing the exact same question twice
+ * across two games is very low — even with identical facts.
+ *
+ * Distractors come from OTHER players' same-key facts (so the wrong answers
+ * are people you know). Pads with the subject's other facts if there aren't
+ * enough other players to fill 3 distractors.
  */
 export function generateQuestions({ gameId, players, facts }: GenerateInput): Omit<Question, "id">[] {
   // Map player_id -> facts[]
@@ -25,16 +37,16 @@ export function generateQuestions({ gameId, players, facts }: GenerateInput): Om
   const questions: Omit<Question, "id">[] = [];
   let idx = 0;
 
-  for (const subject of players) {
+  // Shuffle players first so subject ordering varies each game
+  const shuffledPlayers = shuffle(players);
+
+  for (const subject of shuffledPlayers) {
     const subjectFacts = factsByPlayer.get(subject.id) ?? [];
     // Pick QUESTIONS_PER_FACT random facts per player
     const picked = shuffle(subjectFacts).slice(0, QUESTIONS_PER_FACT);
 
     for (const fact of picked) {
-      const def = DEFAULT_FACTS.find((d) => d.key === fact.fact_key);
-      const label = def?.label ?? fact.fact_key.replace(/_/g, " ");
-
-      // Distractors = same fact_key from OTHER players (or fallback to other facts)
+      // Distractors = same fact_key from OTHER players
       const distractors: string[] = [];
       const otherFacts = facts.filter(
         (f) => f.fact_key === fact.fact_key && f.player_id !== subject.id,
@@ -67,7 +79,7 @@ export function generateQuestions({ gameId, players, facts }: GenerateInput): Om
         question_index: idx++,
         subject_player_id: subject.id,
         fact_key: fact.fact_key,
-        question_text: `What is ${subject.name}'s ${label}?`,
+        question_text: buildQuestionText(subject.name, fact.fact_key),
         options,
         correct_option_index: correctIndex,
         points: 100,
@@ -81,7 +93,7 @@ export function generateQuestions({ gameId, players, facts }: GenerateInput): Om
 
 /**
  * Award points for a question based on speed + correctness.
- * Correct: 100 base. First correct: bonus 50. Each second late: -5.
+ * Correct: 100 base. First correct: bonus 50. Each second late: -5 (capped at 50).
  * Wrong: 0.
  */
 export function scoreAnswer(

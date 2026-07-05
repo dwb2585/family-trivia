@@ -14,6 +14,8 @@ interface LobbyProps {
   activePlayerId: string;
   players: Player[];
   facts: Record<string, string>;
+  /** True if this player's facts were just loaded from their saved profile */
+  prefilledFromProfile?: boolean;
   isHost: boolean;
   onFactChange: (key: string, value: string) => void;
   onSetActive: (playerId: string) => void;
@@ -29,6 +31,7 @@ export function Lobby({
   activePlayerId,
   players,
   facts,
+  prefilledFromProfile = false,
   isHost,
   onFactChange,
   onSetActive,
@@ -230,6 +233,8 @@ export function Lobby({
                 <p className="text-foreground/60 text-xs mt-1">
                   {activePlayer?.ready
                     ? "Locked in. Switch tabs to edit another player."
+                    : prefilledFromProfile
+                    ? "✨ Loaded from your saved profile — edit if anything's changed."
                     : "Others will try to guess these. Specific = funnier."}
                 </p>
               </CardHeader>
