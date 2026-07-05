@@ -4,46 +4,60 @@
 
 @layer base {
   :root {
-    /* Game-show stage palette: dark velvet stage, gold accents */
-    --background: 232 47% 8%;
-    --foreground: 40 33% 96%;
+    /* "Quest HUD" palette — modern mobile-game aesthetic.
+       Deep navy base, electric cyan accent, gold/amber secondary.
+       Family CWABS colors appear as accent dots/badges, not dominant. */
+    --background: 230 56% 7%;          /* deep navy (#0c0f1f) */
+    --foreground: 210 25% 96%;         /* near-white */
 
-    --card: 232 38% 12%;
-    --card-foreground: 40 33% 96%;
+    --card: 230 38% 12%;              /* card surface */
+    --card-foreground: 210 25% 96%;
 
-    --popover: 232 47% 8%;
-    --popover-foreground: 40 33% 96%;
+    --popover: 230 56% 7%;
+    --popover-foreground: 210 25% 96%;
 
-    --primary: 42 91% 60%;           /* gold */
-    --primary-foreground: 232 47% 8%;
+    --primary: 192 100% 56%;          /* electric cyan #00d4ff */
+    --primary-foreground: 230 56% 7%;
 
-    --secondary: 232 38% 18%;
-    --secondary-foreground: 40 33% 96%;
+    --secondary: 230 30% 22%;         /* muted navy */
+    --secondary-foreground: 210 25% 96%;
 
-    --muted: 232 30% 16%;
-    --muted-foreground: 40 15% 70%;
+    --muted: 230 28% 18%;
+    --muted-foreground: 215 14% 65%;
 
-    --accent: 18 89% 55%;            /* hot spotlight orange-red */
-    --accent-foreground: 40 33% 96%;
+    --accent: 32 100% 60%;            /* warm amber/gold */
+    --accent-foreground: 230 56% 7%;
 
-    --destructive: 0 75% 55%;
-    --destructive-foreground: 40 33% 96%;
+    --destructive: 355 95% 62%;
+    --destructive-foreground: 210 25% 96%;
 
-    --border: 232 30% 22%;
-    --input: 232 30% 22%;
-    --ring: 42 91% 60%;
+    --border: 230 30% 22%;
+    --input: 230 30% 22%;
+    --ring: 192 100% 56%;
 
-    --radius: 0.75rem;
+    --radius: 1rem;
 
-    /* Custom stage colors */
-    --stage: 232 47% 6%;
-    --spotlight: 42 80% 35%;
-    --gold: 42 91% 60%;
-    --gold-glow: 42 100% 70%;
-    --velvet: 350 65% 25%;
-    --cream: 40 50% 92%;
-    --success: 142 71% 45%;
-    --danger: 0 84% 60%;
+    /* Custom semantic colors */
+    --stage: 230 56% 6%;               /* deepest navy */
+    --cyan: 192 100% 56%;
+    --cyan-glow: 192 100% 70%;
+    --gold: 32 100% 60%;              /* amber/gold */
+    --gold-glow: 38 100% 70%;
+    --violet: 270 90% 65%;            /* Fortnite-ish purple */
+    --violet-glow: 270 100% 75%;
+    --pink: 330 95% 65%;
+    --green: 152 80% 55%;
+    --red: 355 95% 62%;
+    --cream: 38 50% 92%;
+    --success: 152 80% 55%;
+    --danger: 355 95% 62%;
+
+    /* CWABS family accent colors (used as small dots/badges) */
+    --cwabs-c: 36 95% 55%;            /* Crosse amber */
+    --cwabs-w: 5 90% 60%;             /* Wobbekind red */
+    --cwabs-a: 270 85% 65%;           /* Arts purple */
+    --cwabs-b: 215 90% 60%;           /* Battersby blue */
+    --cwabs-s: 330 85% 65%;           /* Shimizu pink */
   }
 }
 
@@ -59,14 +73,184 @@
   }
   body {
     font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    overflow-x: hidden;
   }
   h1, h2, h3, .display {
-    font-family: "Bowlby One", system-ui, sans-serif;
-    letter-spacing: -0.01em;
+    font-family: "Anton", "Sora", system-ui, sans-serif;
+    letter-spacing: 0.005em;
+    text-transform: uppercase;
+  }
+  .font-display {
+    font-family: "Anton", "Sora", system-ui, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.005em;
   }
 }
 
-/* Subtle TV scanlines — only visible on the stage backdrop */
+/* ==== Backdrop & atmosphere ==== */
+
+/* Subtle blueprint grid behind everything */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, hsl(var(--border) / 0.5) 1px, transparent 1px),
+    linear-gradient(to bottom, hsl(var(--border) / 0.5) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: -1px -1px;
+}
+
+/* Radial spotlight halo from top */
+.bg-spotlight {
+  background: radial-gradient(
+    ellipse 80% 50% at 50% 0%,
+    hsl(var(--cyan) / 0.18) 0%,
+    transparent 60%
+  );
+}
+
+/* Animated aurora-ish color sweep behind hero */
+@keyframes aurora {
+  0%, 100% { transform: translate(-10%, -20%) rotate(0deg); }
+  33% { transform: translate(20%, -10%) rotate(8deg); }
+  66% { transform: translate(-15%, 10%) rotate(-5deg); }
+}
+.bg-aurora {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(circle at 30% 30%, hsl(var(--cyan) / 0.35) 0%, transparent 40%),
+    radial-gradient(circle at 70% 60%, hsl(var(--violet) / 0.3) 0%, transparent 40%),
+    radial-gradient(circle at 50% 80%, hsl(var(--gold) / 0.2) 0%, transparent 40%);
+  filter: blur(60px);
+  animation: aurora 18s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* ==== Modern utilities ==== */
+
+/* Gradient text — used for CWABS title */
+.text-gradient-cyan {
+  background: linear-gradient(135deg, hsl(var(--cyan)) 0%, hsl(var(--violet)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.text-gradient-gold {
+  background: linear-gradient(135deg, hsl(var(--gold)) 0%, hsl(38 100% 70%) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Gradient border that wrap any element — pair with bg-stage rounded-[inherit] inside */
+.glow-border-cyan {
+  position: relative;
+}
+.glow-border-cyan::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, hsl(var(--cyan)), hsl(var(--violet)));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Pulsing neon dot */
+@keyframes neon-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px currentColor, 0 0 16px currentColor; }
+  50% { opacity: 0.85; box-shadow: 0 0 12px currentColor, 0 0 28px currentColor; }
+}
+.neon-pulse {
+  animation: neon-pulse 2.2s ease-in-out infinite;
+}
+
+/* Slow shimmer for premium accents */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(
+    110deg,
+    transparent 0%,
+    transparent 40%,
+    hsl(var(--cyan-glow) / 0.4) 50%,
+    transparent 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 3s linear infinite;
+}
+
+/* Cyan glow pulse for primary CTAs */
+@keyframes glow-pulse-cyan {
+  0%, 100% { box-shadow: 0 0 20px hsl(var(--cyan) / 0.4), 0 0 40px hsl(var(--cyan) / 0.2); }
+  50% { box-shadow: 0 0 32px hsl(var(--cyan) / 0.6), 0 0 60px hsl(var(--cyan) / 0.3); }
+}
+.glow-pulse-cyan {
+  animation: glow-pulse-cyan 2.4s ease-in-out infinite;
+}
+
+/* Pressable button depth — 3D-style */
+.btn-3d {
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.btn-3d:active {
+  transform: translateY(2px);
+}
+
+/* Modern card surface — replaces old plain-bordered cards */
+.surface-card {
+  background: linear-gradient(160deg,
+    hsl(230 38% 14%) 0%,
+    hsl(230 44% 9%) 100%);
+  border: 1px solid hsl(var(--border));
+  border-radius: 1rem;
+  position: relative;
+  overflow: hidden;
+}
+.surface-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, hsl(var(--cyan) / 0.05) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* HUD-code styling for game codes (4-letter room codes) */
+.hud-code {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 700;
+  letter-spacing: 0.45em;
+  background: linear-gradient(135deg, hsl(var(--cyan)), hsl(var(--violet)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 32px hsl(var(--cyan) / 0.5);
+}
+
+/* Marquee replacement — thin animated gradient bar with glow */
+.modern-bar {
+  height: 2px;
+  position: relative;
+  overflow: hidden;
+  background: hsl(var(--border));
+  border-radius: 9999px;
+}
+.modern-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, hsl(var(--cyan)) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2.5s linear infinite;
+}
+
+/* Stage backdrop (kept for backwards compat with screens that still use it) */
 .stage-scanlines::before {
   content: "";
   position: fixed;
@@ -82,41 +266,7 @@
   z-index: 1;
 }
 
-/* Marquee bulbs for game-show feel */
-.marquee-bulbs {
-  background-image: radial-gradient(
-    circle,
-    hsl(var(--gold)) 4px,
-    transparent 5px
-  );
-  background-size: 24px 24px;
-  background-repeat: repeat-x;
-  animation: marquee 3s linear infinite;
-}
-
-/* Pressable button depth */
-.btn-3d {
-  box-shadow:
-    0 4px 0 0 hsl(var(--gold) / 0.4),
-    0 6px 20px hsl(var(--gold) / 0.3);
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
-}
-.btn-3d:active {
-  transform: translateY(4px);
-  box-shadow:
-    0 0 0 0 hsl(var(--gold) / 0.4),
-    0 0 20px hsl(var(--gold) / 0.3);
-}
-
-/* Glow pulse for active CTA */
-@keyframes glow-pulse {
-  0%, 100% {
-    box-shadow: 0 0 20px hsl(var(--gold) / 0.4);
-  }
-  50% {
-    box-shadow: 0 0 40px hsl(var(--gold) / 0.7);
-  }
-}
-.glow-pulse {
-  animation: glow-pulse 2s ease-in-out infinite;
+/* Background-image utilities (kept) */
+.stage-radial {
+  background: radial-gradient(ellipse at top, hsl(var(--cyan) / 0.18) 0%, transparent 60%);
 }

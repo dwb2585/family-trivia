@@ -10,39 +10,51 @@ interface HomeProps {
   onResume?: () => void;
 }
 
+/**
+ * Home — single-screen main menu. Modern mobile-game UI:
+ * - Aurora gradient background animates behind the hero
+ * - CWABS title (TitleIntro) is the visual hero
+ * - Stacked CTAs: Host (gold gradient, the heroic act), Join (cyan gradient),
+ *   Profile (subtle ghost)
+ * - Resume link only appears if the user has a session in progress
+ */
 export function Home({ onHost, onJoin, onProfile, hasStoredGame, onResume }: HomeProps) {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-between px-5 py-8 stage-scanlines relative overflow-hidden">
-      {/* Spotlight + velvet backdrop */}
-      <div className="absolute inset-0 bg-stage-radial pointer-events-none" />
-      <div className="absolute inset-0 bg-stage-velvet pointer-events-none opacity-80" />
+    <div className="relative min-h-screen flex flex-col items-center justify-between px-5 py-8 overflow-hidden bg-grid">
+      {/* Aurora blobs — modern backdrop */}
+      <div className="bg-aurora" />
+      {/* Soft spotlight from the top */}
+      <div className="absolute inset-0 bg-spotlight pointer-events-none" />
 
       <div className="relative z-10 w-full flex flex-col items-center flex-1 justify-center max-w-md">
-        {/* Top marquee */}
         <Marquee className="mb-6 max-w-xs" />
 
-        {/* Theatrical CWABS title — letters crash in, names fade below */}
+        {/* Theatrical CWABS title */}
         <TitleIntro />
 
-        {/* CTAs — fade in after the title sequence finishes */}
+        {/* CTAs — fade in after title sequence */}
         <div
-          className="w-full space-y-3 mt-8 animate-fade-in-up"
-          style={{ animationDelay: "2.5s", opacity: 0 }}
+          className="w-full space-y-3 mt-8"
+          style={{
+            opacity: 0,
+            animation: "fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+            animationDelay: "1.4s",
+          }}
         >
-          <Button onClick={onHost} size="xl" fullWidth>
+          <Button onClick={onHost} size="xl" fullWidth variant="gold" shimmer>
             🎤 Host a Game
           </Button>
-          <Button onClick={onJoin} variant="secondary" size="xl" fullWidth>
+          <Button onClick={onJoin} size="xl" fullWidth variant="primary" shimmer>
             🎮 Join a Game
           </Button>
-          <Button onClick={onProfile} variant="ghost" size="lg" fullWidth>
+          <Button onClick={onProfile} variant="ghost" size="md" fullWidth>
             👤 Edit My Profile
           </Button>
 
           {hasStoredGame && onResume ? (
             <button
               onClick={onResume}
-              className="block w-full text-center text-sm text-cream/50 hover:text-cream/80 mt-4 underline underline-offset-4"
+              className="block w-full text-center text-sm text-cream/50 hover:text-cyan mt-4 underline underline-offset-4 transition-colors"
             >
               Resume your game →
             </button>
@@ -52,7 +64,7 @@ export function Home({ onHost, onJoin, onProfile, hasStoredGame, onResume }: Hom
         <Marquee className="mt-10 max-w-xs" />
       </div>
 
-      <footer className="relative z-10 text-cream/40 text-xs uppercase tracking-widest">
+      <footer className="relative z-10 text-cream/40 text-[10px] uppercase tracking-[0.3em] mt-6">
         Made for family game nights
       </footer>
     </div>

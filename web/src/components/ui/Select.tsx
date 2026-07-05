@@ -23,9 +23,7 @@ interface SelectProps {
  * FamilyMemberSelect — large-tap-target dropdown listing every CWABS family
  * member with their letter badge + emoji avatar. Selected member gets a
  * preview card underneath. Falls back to a custom-text input if the user
- * wants a name not in the roster.
- *
- * Uses the native iOS/Android picker sheet on touch devices.
+ * wants a name not in the roster. Uses the native iOS/Android picker sheet.
  */
 export function FamilyMemberSelect({
   label,
@@ -51,7 +49,7 @@ export function FamilyMemberSelect({
       {label ? (
         <label
           htmlFor={selectId}
-          className="block text-sm font-semibold text-foreground/80 mb-2 uppercase tracking-wider"
+          className="block text-[11px] font-bold text-cream/70 mb-2 uppercase tracking-[0.18em]"
         >
           {label}
         </label>
@@ -72,12 +70,16 @@ export function FamilyMemberSelect({
           }}
           className={cn(
             "w-full h-14 px-4 pr-10 rounded-xl appearance-none cursor-pointer",
-            "bg-stage/60 border-2",
-            selected ? "border-gold/60" : "border-border",
-            "text-foreground text-lg font-semibold",
-            "transition-colors duration-150",
-            "focus:outline-none focus:border-gold focus:bg-stage",
+            "bg-stage/70 border-2",
+            selected ? "border-cyan/60 shadow-cyan-glow-sm" : "border-border",
+            "text-foreground text-base font-semibold",
+            "transition-all duration-150",
+            "focus:outline-none focus:border-cyan focus:bg-stage",
           )}
+          style={{
+            // Native options panel: dark + readable
+            colorScheme: "dark",
+          }}
         >
           <option value="" disabled>
             {placeholder}
@@ -94,7 +96,7 @@ export function FamilyMemberSelect({
         </select>
 
         {/* Chevron */}
-        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gold text-xl">
+        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-cyan text-xl">
           ▾
         </div>
       </div>
@@ -108,10 +110,10 @@ export function FamilyMemberSelect({
             placeholder="Type your name"
             className={cn(
               "flex-1 h-12 px-4 rounded-xl",
-              "bg-stage/60 border-2 border-gold",
-              "text-foreground text-lg",
+              "bg-stage/70 border-2 border-cyan",
+              "text-foreground text-base",
               "placeholder:text-foreground/30",
-              "focus:outline-none focus:bg-stage",
+              "focus:outline-none focus:bg-stage focus:shadow-cyan-glow-sm",
             )}
             onKeyDown={(e) => {
               if (e.key === "Enter" && customValue.trim()) {
@@ -128,7 +130,7 @@ export function FamilyMemberSelect({
                 setCustomMode(false);
               }
             }}
-            className="px-4 h-12 rounded-xl bg-gold text-stage font-bold"
+            className="px-4 h-12 rounded-xl bg-cyan text-stage font-bold"
           >
             ✓
           </button>
@@ -145,23 +147,27 @@ export function FamilyMemberSelect({
         </div>
       ) : null}
 
-      {/* Selected preview card — shows the chosen member's CWABS letter big */}
+      {/* Selected preview card — modern style with gradient border */}
       {selected ? (
-        <div className="mt-3 flex items-center gap-3 p-3 rounded-xl bg-stage/40 border border-gold/30">
+        <div className="mt-3 flex items-center gap-3 p-3 rounded-xl bg-stage/60 border border-cyan/40 shadow-cyan-glow-sm">
           <div
-            className="w-12 h-12 rounded-lg flex items-center justify-center font-display text-2xl text-stage"
-            style={{ background: selected.color }}
+            className="w-11 h-11 rounded-lg flex items-center justify-center font-display text-xl text-stage shadow-lg"
+            style={{
+              background: `linear-gradient(135deg, ${selected.color}, ${selected.color}dd)`,
+              boxShadow: `0 0 20px ${selected.color}55`,
+            }}
           >
             {selected.letter}
           </div>
           <div className="flex-1">
-            <div className="text-xs text-foreground/50 uppercase tracking-wider">
+            <div className="text-[10px] text-cream/50 uppercase tracking-[0.18em]">
               Playing as
             </div>
             <div className="text-lg font-bold text-foreground">
               {selected.emoji} {selected.firstName} {selected.lastName}
             </div>
           </div>
+          <div className="text-xl opacity-70">{selected.emoji}</div>
         </div>
       ) : null}
     </div>

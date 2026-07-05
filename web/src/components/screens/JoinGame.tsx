@@ -31,8 +31,9 @@ export function JoinGame({ onSubmit, onBack, initialCode = "" }: JoinGameProps) 
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-5 py-8 stage-scanlines relative">
-      <div className="absolute inset-0 bg-stage-radial pointer-events-none" />
+    <div className="relative min-h-screen flex flex-col items-center justify-center px-5 py-8 overflow-hidden bg-grid">
+      <div className="bg-aurora" />
+      <div className="absolute inset-0 bg-spotlight pointer-events-none" />
 
       <div className="relative z-10 w-full max-w-md">
         <Marquee className="mb-6" />
@@ -66,13 +67,21 @@ export function JoinGame({ onSubmit, onBack, initialCode = "" }: JoinGameProps) 
                 <p className="text-danger text-sm">{error}</p>
               ) : null}
 
-              <Button type="submit" size="lg" fullWidth loading={loading} disabled={!code.trim() || !name.trim()}>
+              <Button
+                type="submit"
+                size="lg"
+                fullWidth
+                variant="primary"
+                shimmer
+                loading={loading}
+                disabled={!code.trim() || !name.trim()}
+              >
                 Join Game 🎮
               </Button>
               <button
                 type="button"
                 onClick={onBack}
-                className="block w-full text-center text-foreground/50 hover:text-foreground text-sm"
+                className="block w-full text-center text-foreground/50 hover:text-cyan text-sm transition-colors"
               >
                 ← Back
               </button>

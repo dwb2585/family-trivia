@@ -15,7 +15,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         {label ? (
           <label
             htmlFor={inputId}
-            className="block text-sm font-semibold text-foreground/80 mb-2 uppercase tracking-wider"
+            className="block text-[11px] font-bold text-cream/70 mb-2 uppercase tracking-[0.18em]"
           >
             {label}
           </label>
@@ -25,13 +25,13 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           ref={ref}
           className={cn(
             "w-full h-12 px-4 rounded-xl",
-            "bg-stage/60 border-2 border-border",
-            "text-foreground text-lg",
+            "bg-stage/70 border border-border",
+            "text-foreground text-base",
             "placeholder:text-foreground/30",
-            "transition-colors duration-150",
-            "focus:outline-none focus:border-gold focus:bg-stage",
+            "transition-all duration-150",
+            "focus:outline-none focus:border-cyan focus:bg-stage focus:shadow-cyan-glow-sm",
             "disabled:opacity-50",
-            mono && "font-mono uppercase tracking-[0.3em] text-center text-2xl",
+            mono && "font-mono uppercase tracking-[0.35em] text-center text-2xl text-cyan",
             error && "border-danger",
             className,
           )}

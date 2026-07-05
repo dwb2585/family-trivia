@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
@@ -79,8 +79,8 @@ export function GamePlay({
   const isWhoSaidIt = question.mode === "who-said-it";
 
   return (
-    <div className="min-h-screen flex flex-col px-4 py-6 stage-scanlines relative">
-      <div className="absolute inset-0 bg-stage-radial pointer-events-none" />
+    <div className="relative min-h-screen flex flex-col px-4 py-6 overflow-hidden bg-grid">
+      <div className="bg-aurora opacity-40" />
 
       <LeaveButton
         onLeave={onLeave}
@@ -94,15 +94,15 @@ export function GamePlay({
       <div className="relative z-10 w-full max-w-2xl mx-auto flex-1 flex flex-col">
         <Marquee className="mb-4" />
 
-        {/* Top bar */}
+        {/* Top HUD bar */}
         <div className="flex items-center justify-between mb-3">
           <Badge variant="default">
-            Question {questionIndex + 1} of {totalQuestions}
+            Question {questionIndex + 1} / {totalQuestions}
           </Badge>
           <div className="flex items-center gap-2">
-            {isWhoSaidIt ? <Badge variant="default">🎯 Who said it?</Badge> : null}
+            {isWhoSaidIt ? <Badge variant="violet">🎯 Who said it?</Badge> : null}
             {!showResults ? (
-              <Badge variant={countdown <= 5 ? "danger" : "gold"}>
+              <Badge variant={countdown <= 5 ? "danger" : "cyan"}>
                 ⏱ {countdown}s
               </Badge>
             ) : (
@@ -116,12 +116,12 @@ export function GamePlay({
           <div className="mb-3 relative">
             <button
               onClick={() => setSwitcherOpen((o) => !o)}
-              className="w-full flex items-center justify-between px-4 py-2 rounded-xl bg-card border border-border hover:border-gold/50 transition-colors"
+              className="w-full flex items-center justify-between px-4 py-2 rounded-xl bg-card border border-border hover:border-cyan/60 transition-colors"
             >
-              <span className="text-xs uppercase tracking-wider text-cream/50">
+              <span className="text-[10px] uppercase tracking-[0.18em] text-cream/50">
                 Playing as
               </span>
-              <span className="font-bold text-gold flex items-center gap-2">
+              <span className="font-bold text-cyan flex items-center gap-2">
                 {me.name}
                 <span className="text-cream/40 text-xs">{switcherOpen ? "▲" : "▼"}</span>
               </span>
@@ -132,7 +132,7 @@ export function GamePlay({
                   initial={{ opacity: 0, y: -8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
-                  className="absolute left-0 right-0 mt-1 z-20 bg-card border border-gold/40 rounded-xl overflow-hidden shadow-2xl"
+                  className="absolute left-0 right-0 mt-1 z-20 bg-card border border-cyan/40 rounded-xl overflow-hidden shadow-cyan-glow"
                 >
                   {myPlayers.map((p) => (
                     <button
@@ -143,12 +143,12 @@ export function GamePlay({
                       }}
                       className={cn(
                         "w-full text-left px-4 py-2.5 flex items-center justify-between",
-                        "hover:bg-gold/10 transition-colors",
-                        p.id === me.id && "bg-gold/15",
+                        "hover:bg-cyan/10 transition-colors",
+                        p.id === me.id && "bg-cyan/15",
                       )}
                     >
                       <span className="font-semibold">{p.name}</span>
-                      <span className="text-xs text-cream/50">{p.score} pts</span>
+                      <span className="text-xs text-cream/50 font-mono">{p.score} pts</span>
                     </button>
                   ))}
                 </motion.div>
@@ -157,41 +157,56 @@ export function GamePlay({
           </div>
         ) : null}
 
-        {/* Question card */}
-        <Card className="mb-4">
-          <CardBody className="pt-6">
-            {!isWhoSaidIt && subjectPlayer ? (
-              <p className="text-cream/60 text-sm uppercase tracking-wider text-center mb-2">
-                About {subjectPlayer.name}
-              </p>
-            ) : null}
-            <h2
-              className="font-display text-3xl sm:text-4xl text-gold text-center leading-tight"
-              style={{ textShadow: "0 0 30px hsl(var(--gold-glow) / 0.3)" }}
-            >
-              {question.question_text}
-            </h2>
+        {/* ==== Question card (hero) ==== */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={question.id}
+            initial={{ opacity: 0, y: 12, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.97 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Card className="mb-4 shadow-cyan-glow-sm">
+              <CardBody className="pt-6 pb-7">
+                {!isWhoSaidIt && subjectPlayer ? (
+                  <p className="text-cream/60 text-[10px] uppercase tracking-[0.25em] text-center mb-3">
+                    About {subjectPlayer.name}
+                  </p>
+                ) : null}
+                <h2
+                  className="font-display text-2xl sm:text-4xl text-center leading-tight"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, hsl(var(--cyan-glow)) 0%, hsl(var(--violet)) 100%)",
+                    WebkitBackgroundClip: "text",
+                    backgroundClip: "text",
+                    color: "transparent",
+                  }}
+                >
+                  {question.question_text}
+                </h2>
 
-            {isMyQuestion && !isWhoSaidIt ? (
-              <div className="mt-4 px-4 py-3 rounded-xl bg-gold/10 border border-gold/30 text-center">
-                <p className="text-gold font-semibold">
-                  🎤 This one's about you! Share your answer out loud.
-                </p>
-              </div>
-            ) : null}
+                {isMyQuestion && !isWhoSaidIt ? (
+                  <div className="mt-4 px-4 py-3 rounded-xl bg-gold/10 border border-gold/40 text-center">
+                    <p className="text-gold font-semibold text-sm">
+                      🎤 This one's about you! Share your answer out loud.
+                    </p>
+                  </div>
+                ) : null}
 
-            {/* Who-said-it: show who this fact belongs to (subject) after they're not the one answering */}
-            {isWhoSaidIt && isMyQuestion ? (
-              <div className="mt-4 px-4 py-3 rounded-xl bg-gold/10 border border-gold/30 text-center">
-                <p className="text-gold font-semibold">
-                  🎤 This fact is yours! Everyone else is guessing.
-                </p>
-              </div>
-            ) : null}
-          </CardBody>
-        </Card>
+                {isWhoSaidIt && isMyQuestion ? (
+                  <div className="mt-4 px-4 py-3 rounded-xl bg-gold/10 border border-gold/40 text-center">
+                    <p className="text-gold font-semibold text-sm">
+                      🎤 This fact is yours! Everyone else is guessing.
+                    </p>
+                  </div>
+                ) : null}
+              </CardBody>
+            </Card>
+          </motion.div>
+        </AnimatePresence>
 
-        {/* Answer UI — switches based on question mode */}
+        {/* Answer UI */}
         <AnimatePresence mode="wait">
           {!showResults ? (
             <motion.div
@@ -219,20 +234,20 @@ export function GamePlay({
                         onClick={() => handleAnswer(idx)}
                         disabled={disabled}
                         className={cn(
-                          "h-16 px-4 rounded-xl border-2 text-left font-semibold",
+                          "relative h-16 px-4 rounded-xl border-2 text-left font-semibold",
                           "transition-all duration-150",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold",
-                          "disabled:cursor-not-allowed",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan",
+                          "disabled:cursor-not-allowed overflow-hidden",
                           iAnsweredThis
-                            ? "bg-gold text-stage border-gold btn-3d"
-                            : "bg-card text-foreground border-border hover:border-gold hover:bg-gold/10",
+                            ? "bg-gradient-to-br from-cyan to-violet text-stage border-cyan btn-3d shadow-cyan-glow"
+                            : "bg-card text-foreground border-border hover:border-cyan hover:bg-cyan/5 hover:shadow-cyan-glow-sm",
                           isMyQuestion && "opacity-30",
                         )}
                       >
-                        <span className="inline-block w-6 h-6 mr-2 rounded-full bg-stage/60 text-gold text-xs font-bold leading-6 text-center align-middle">
+                        <span className="inline-flex items-center justify-center w-7 h-7 mr-3 rounded-md bg-stage/70 text-cyan text-sm font-mono font-bold">
                           {String.fromCharCode(65 + idx)}
                         </span>
-                        {opt}
+                        <span className="align-middle">{opt}</span>
                       </button>
                     );
                   })}
@@ -242,7 +257,7 @@ export function GamePlay({
           ) : (
             <motion.div
               key="results"
-              initial={{ opacity: 0, scale: 0.9 }}
+              initial={{ opacity: 0, scale: 0.92 }}
               animate={{ opacity: 1, scale: 1 }}
               className={cn(
                 isWhoSaidIt
@@ -262,14 +277,16 @@ export function GamePlay({
                       "px-4 py-3 rounded-xl border-2 flex items-center justify-between gap-2",
                       isCorrect
                         ? "bg-success/20 border-success animate-correct-flash"
-                        : "bg-card border-border opacity-60",
+                        : "bg-card border-border opacity-70",
                     )}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-2xl shrink-0">{emojiFor(opt)}</span>
                       <span className="font-semibold truncate">{opt}</span>
                     </div>
-                    {isCorrect ? <span className="text-xl shrink-0">✓</span> : null}
+                    {isCorrect ? (
+                      <span className="text-xl shrink-0 text-success neon-pulse" style={{ color: "hsl(var(--success))" }}>✓</span>
+                    ) : null}
                     {pickers.length > 0 && !isCorrect ? (
                       <span className="text-xs text-foreground/60 shrink-0">
                         {pickers.length} picked
@@ -282,7 +299,7 @@ export function GamePlay({
           )}
         </AnimatePresence>
 
-        {/* Host action bar */}
+        {/* ==== Host action bar ==== */}
         <div className="mt-auto">
           {isHost ? (
             <div className="space-y-2">
@@ -291,16 +308,18 @@ export function GamePlay({
                   onClick={onReveal}
                   size="lg"
                   fullWidth
+                  variant="gold"
+                  shimmer
                   disabled={answeredCount === 0}
                 >
-                  👁 Reveal Answer ({answeredCount}/{totalPlayers} answered)
+                  👁 Reveal Answer ({answeredCount}/{totalPlayers})
                 </Button>
               ) : questionIndex + 1 < totalQuestions ? (
-                <Button onClick={onNext} size="lg" fullWidth>
+                <Button onClick={onNext} size="lg" fullWidth variant="primary" shimmer>
                   Next Question →
                 </Button>
               ) : (
-                <Button onClick={onNext} size="lg" fullWidth>
+                <Button onClick={onNext} size="lg" fullWidth variant="gold" shimmer>
                   🏁 Show Final Results
                 </Button>
               )}
@@ -318,9 +337,9 @@ export function GamePlay({
           )}
         </div>
 
-        {/* Live scoreboard */}
-        <div className="mt-4 bg-card/50 border border-border rounded-xl px-4 py-3">
-          <div className="flex items-center justify-between text-xs uppercase tracking-wider text-cream/50 mb-2">
+        {/* ==== Live scoreboard (HUD style) ==== */}
+        <div className="mt-4 bg-card/70 border border-border rounded-2xl px-4 py-3 backdrop-blur-md">
+          <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-cream/50 mb-2">
             <span>Live Scoreboard</span>
             <span>{answeredCount}/{totalPlayers} answered</span>
           </div>
@@ -331,14 +350,14 @@ export function GamePlay({
                 <div
                   key={p.id}
                   className={cn(
-                    "px-2.5 py-1 rounded-full text-sm font-bold flex items-center gap-1.5",
+                    "px-2.5 py-1 rounded-full text-sm font-bold flex items-center gap-1.5 transition-all",
                     isMine
-                      ? "bg-gold/20 text-gold"
-                      : "bg-stage/60 text-foreground/80",
+                      ? "bg-gradient-to-r from-cyan/30 to-violet/30 text-cyan border border-cyan/60 shadow-cyan-glow-sm"
+                      : "bg-stage/60 text-foreground/80 border border-border",
                   )}
                 >
                   <span>{p.name}</span>
-                  <span className="text-cream/40 font-mono">{p.score}</span>
+                  <span className="text-cream/50 font-mono">{p.score}</span>
                 </div>
               );
             })}
@@ -352,9 +371,8 @@ export function GamePlay({
 }
 
 /**
- * WhoSaidItPicker — native <select> for picking a player from the dropdown.
- * On iOS opens the wheel picker; on Android opens a bottom sheet; on desktop
- * opens a standard dropdown. Styled with a gold border to match the theme.
+ * WhoSaidItPicker — native <select> styled with neon-bordered HUD.
+ * On iOS opens the wheel picker; on Android opens a bottom sheet.
  */
 function WhoSaidItPicker({
   options,
@@ -371,7 +389,6 @@ function WhoSaidItPicker({
     myAnswer ? String(myAnswer.selected_option_index) : "",
   );
 
-  // Reset selection when question changes
   useEffect(() => {
     setSelected(myAnswer ? String(myAnswer.selected_option_index) : "");
   }, [myAnswer]);
@@ -388,7 +405,7 @@ function WhoSaidItPicker({
 
   return (
     <div className="w-full">
-      <label className="block text-xs uppercase tracking-wider text-cream/60 mb-2 text-center">
+      <label className="block text-[11px] uppercase tracking-[0.18em] text-cream/60 mb-2 text-center font-bold">
         Who is this about?
       </label>
       <div className="relative">
@@ -399,13 +416,14 @@ function WhoSaidItPicker({
           className={cn(
             "w-full h-16 px-5 pr-12 rounded-2xl appearance-none cursor-pointer",
             "bg-card border-2 text-foreground text-xl font-semibold",
-            "transition-colors duration-150",
-            "focus:outline-none",
+            "transition-all duration-150",
+            "focus:outline-none focus:shadow-cyan-glow",
             disabled
-              ? "opacity-60 cursor-not-allowed"
-              : "border-gold/60 focus:border-gold hover:bg-gold/5",
+              ? "opacity-60 cursor-not-allowed border-border"
+              : "border-cyan/60 hover:border-cyan hover:bg-cyan/5",
             myAnswer && "border-success bg-success/10",
           )}
+          style={{ colorScheme: "dark" }}
         >
           <option value="" disabled>
             {disabled ? "Not for you to answer" : "Pick someone…"}
@@ -416,7 +434,7 @@ function WhoSaidItPicker({
             </option>
           ))}
         </select>
-        <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-gold text-2xl">
+        <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-cyan text-2xl">
           ▾
         </div>
       </div>
@@ -428,8 +446,8 @@ function WhoSaidItPicker({
           className="mt-3 flex items-center justify-center gap-2 text-cream/80"
         >
           <span className="text-2xl">{emojiFor(selectedName)}</span>
-          <span className="text-lg">
-            You picked <span className="font-bold text-gold">{selectedName}</span>
+          <span className="text-base">
+            You picked <span className="font-bold text-cyan">{selectedName}</span>
           </span>
         </motion.div>
       ) : (

@@ -1,52 +1,47 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { SURNAMES } from "@/lib/family";
 
-// Each letter FIRES from deep behind the camera plane, spinning like a tossed
-// object, and SLAMS into the front of the screen. Stagger means they don't
-// all land at once — the last letter is the punchline.
-//
-//   z: starts at -2400 (way behind camera), ends at 0 (front of screen)
-//   scale: starts tiny (0.15), ends full (1) — perspective makes them grow
-//   rotate: full multi-turn spin during flight for "tossed missile" feel
-const FLY_IN = [
-  { x: -260, y: -180, z: -2400, rotate: -480, delay: 0.35 },
-  { x: 280, y: -200, z: -2400, rotate: 520, delay: 0.50 },
-  { x: -220, y: 240, z: -2400, rotate: -560, delay: 0.65 },
-  { x: 240, y: 220, z: -2400, rotate: 600, delay: 0.80 },
-  { x: 0, y: -340, z: -2400, rotate: 720, delay: 0.95 },
-];
-
 /**
- * TitleIntro — CWABS theatrical intro.
+ * TitleIntro — CWABS letters fly in from the back of the screen, rotate,
+ * and lock into place with a punch. Kept the depth + spin (it reads well)
+ * but ditched the vintage Bowlby One feel for a modern blocky Anton type
+ * with neon glow per letter.
  *
- * Letters FLY FROM BEHIND THE CAMERA toward the audience (true z-axis depth,
- * not just x/y translation), tumbling like tossed props, then CRASH into the
- * front of the screen with a springy impact. Names fade in below once the
- * dust settles.
- *
- * Total runtime: ~2.6 seconds. Respects prefers-reduced-motion.
+ * Total runtime: ~1.4 seconds.
  */
 export function TitleIntro() {
   const reduced = useReducedMotion();
   const skipAnim = !!reduced;
+
+  // Direction per letter — different start positions for visual variety
+  const FLY_IN = [
+    { x: -240, y: -160, z: -1500, rotate: -340, delay: 0 },
+    { x: 260, y: -180, z: -1500, rotate: 380, delay: 0.1 },
+    { x: -200, y: 220, z: -1500, rotate: -420, delay: 0.2 },
+    { x: 220, y: 200, z: -1500, rotate: 460, delay: 0.3 },
+    { x: 0, y: -300, z: -1500, rotate: 540, delay: 0.4 },
+  ];
 
   return (
     <div
       className="relative w-full"
       style={{ perspective: "1100px", perspectiveOrigin: "50% 45%" }}
     >
-      {/* CWABS — each letter is its own animated span on its own 3D layer */}
-      <div className="flex justify-center items-center gap-1 sm:gap-2 md:gap-3 mb-5">
+      <div className="flex justify-center items-end gap-0.5 sm:gap-1 md:gap-2 mb-3">
         {SURNAMES.map((item, i) => {
           const fly = FLY_IN[i];
           return (
             <motion.span
               key={item.letter}
-              className="font-display text-7xl sm:text-8xl md:text-9xl leading-none inline-block"
+              className="font-display text-[5rem] sm:text-[6.5rem] md:text-[8rem] leading-none inline-block"
               style={{
                 color: item.color,
-                textShadow:
-                  "0 0 50px hsl(var(--gold-glow) / 0.7), 0 8px 0 hsl(var(--velvet) / 0.75), 0 14px 35px rgba(0,0,0,0.65)",
+                textShadow: `
+                  0 0 32px ${item.color}aa,
+                  0 0 64px ${item.color}55,
+                  0 6px 0 rgba(0,0,0,0.5)
+                `,
+                WebkitTextStroke: `1.5px ${item.color}`,
                 transformStyle: "preserve-3d",
                 transformOrigin: "center",
                 willChange: "transform, opacity",
@@ -59,7 +54,7 @@ export function TitleIntro() {
                       y: fly.y,
                       z: fly.z,
                       rotate: fly.rotate,
-                      scale: 0.15,
+                      scale: 0.25,
                       opacity: 0,
                     }
               }
@@ -77,9 +72,9 @@ export function TitleIntro() {
                   : {
                       delay: fly.delay,
                       type: "spring",
-                      stiffness: 240,
-                      damping: 7,
-                      mass: 1.4,
+                      stiffness: 220,
+                      damping: 9,
+                      mass: 1.1,
                     }
               }
             >
@@ -89,21 +84,21 @@ export function TitleIntro() {
         })}
       </div>
 
-      {/* Full family names — fade in once all letters have landed */}
+      {/* Family surnames fade in once letters land */}
       <motion.div
-        className="flex justify-center items-baseline gap-3 sm:gap-5 md:gap-7 flex-wrap px-4"
-        initial={skipAnim ? { opacity: 1, y: 0 } : { opacity: 0, y: 18 }}
+        className="flex justify-center items-center gap-2 sm:gap-3 md:gap-5 flex-wrap px-4"
+        initial={skipAnim ? { opacity: 1, y: 0 } : { opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={
           skipAnim
             ? { duration: 0 }
-            : { delay: 2.25, duration: 0.6, ease: "easeOut" }
+            : { delay: 1.1, duration: 0.5, ease: "easeOut" }
         }
       >
         {SURNAMES.map((item) => (
           <span
             key={item.name}
-            className="text-cream/70 text-xs sm:text-sm uppercase tracking-[0.25em] font-bold"
+            className="text-cream/70 text-[10px] sm:text-xs uppercase tracking-[0.3em] font-bold"
           >
             {item.name}
           </span>

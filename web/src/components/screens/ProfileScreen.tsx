@@ -119,8 +119,8 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
   }
 
   return (
-    <div className="min-h-screen flex flex-col px-4 py-6 stage-scanlines relative">
-      <div className="absolute inset-0 bg-stage-radial pointer-events-none" />
+    <div className="relative min-h-screen flex flex-col px-4 py-6 overflow-hidden bg-grid">
+      <div className="bg-aurora opacity-50" />
 
       <LeaveButton onLeave={onBack} confirmMessage="Leave without saving further changes?" />
 
@@ -182,7 +182,7 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
                 </CardHeader>
                 <CardBody className="pt-2 space-y-3">
                   {customFacts.length === 0 && !addingCustom ? (
-                    <p className="text-cream/40 text-sm text-center py-3">
+                    <p className="text-cream/50 text-sm text-center py-3">
                       No custom questions yet.
                     </p>
                   ) : null}
@@ -213,7 +213,7 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
                   ) : (
                     <button
                       onClick={() => setAddingCustom(true)}
-                      className="w-full py-3 rounded-xl border-2 border-dashed border-gold/30 text-gold/70 hover:text-gold hover:border-gold transition-colors font-semibold"
+                      className="w-full py-3 rounded-xl border-2 border-dashed border-gold/30 text-gold/70 hover:text-cyan hover:border-cyan transition-colors font-semibold"
                     >
                       + Add a custom question
                     </button>
@@ -270,7 +270,7 @@ function DefaultFactField({
           "w-full h-11 px-3 rounded-lg",
           "bg-stage/60 border border-border",
           "text-foreground placeholder:text-foreground/30",
-          "focus:outline-none focus:border-gold",
+          "focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm",
           "transition-colors",
         )}
       />
@@ -308,7 +308,7 @@ function CustomFactCard({
             Label: <span className="text-cream/70">{fact.label}</span>
           </div>
           <div className="text-sm text-gold mt-1">
-            {fact.value || <span className="text-cream/40 italic">no answer yet</span>}
+            {fact.value || <span className="text-cream/50 italic">no answer yet</span>}
           </div>
         </div>
         <div className="flex flex-col gap-1 shrink-0">
@@ -337,19 +337,19 @@ function CustomFactCard({
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
         placeholder="Question (e.g. What's your favorite season?)"
-        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-gold"
+        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm focus:bg-stage"
       />
       <input
         value={label}
         onChange={(e) => setLabel(e.target.value)}
         placeholder="Label (e.g. favorite season)"
-        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-gold"
+        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm focus:bg-stage"
       />
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder="Your answer"
-        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-gold"
+        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm focus:bg-stage"
       />
       <div className="flex gap-2 justify-end">
         <button
@@ -369,7 +369,7 @@ function CustomFactCard({
             setEditing(false);
           }}
           disabled={!prompt.trim() || !label.trim()}
-          className="px-3 h-9 rounded-lg bg-gold text-stage text-sm font-bold disabled:opacity-50"
+          className="px-3 h-9 rounded-lg bg-gradient-to-br from-cyan to-violet text-stage text-sm font-bold shadow-cyan-glow-sm disabled:opacity-50"
         >
           Save
         </button>
@@ -413,19 +413,19 @@ function NewCustomFactForm({
           if (!label) setLabel(deriveLabel(e.target.value));
         }}
         placeholder="Question (e.g. What's your favorite season?)"
-        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-gold"
+        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm focus:bg-stage"
       />
       <input
         value={label}
         onChange={(e) => setLabel(e.target.value)}
         placeholder="Label (e.g. favorite season) — used in question templates"
-        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-gold"
+        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm focus:bg-stage"
       />
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder="Your answer (can add later)"
-        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-gold"
+        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm focus:bg-stage"
       />
       <div className="flex gap-2 justify-end">
         <button
@@ -437,7 +437,7 @@ function NewCustomFactForm({
         <button
           onClick={() => onSubmit(prompt, label, value)}
           disabled={!prompt.trim() || !label.trim()}
-          className="px-3 h-9 rounded-lg bg-gold text-stage text-sm font-bold disabled:opacity-50"
+          className="px-3 h-9 rounded-lg bg-gradient-to-br from-cyan to-violet text-stage text-sm font-bold shadow-cyan-glow-sm disabled:opacity-50"
         >
           Add Question
         </button>
