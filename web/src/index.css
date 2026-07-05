@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Game-show stage palette: dark velvet stage, gold accents */
+    --background: 232 47% 8%;
+    --foreground: 40 33% 96%;
+
+    --card: 232 38% 12%;
+    --card-foreground: 40 33% 96%;
+
+    --popover: 232 47% 8%;
+    --popover-foreground: 40 33% 96%;
+
+    --primary: 42 91% 60%;           /* gold */
+    --primary-foreground: 232 47% 8%;
+
+    --secondary: 232 38% 18%;
+    --secondary-foreground: 40 33% 96%;
+
+    --muted: 232 30% 16%;
+    --muted-foreground: 40 15% 70%;
+
+    --accent: 18 89% 55%;            /* hot spotlight orange-red */
+    --accent-foreground: 40 33% 96%;
+
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 40 33% 96%;
+
+    --border: 232 30% 22%;
+    --input: 232 30% 22%;
+    --ring: 42 91% 60%;
+
+    --radius: 0.75rem;
+
+    /* Custom stage colors */
+    --stage: 232 47% 6%;
+    --spotlight: 42 80% 35%;
+    --gold: 42 91% 60%;
+    --gold-glow: 42 100% 70%;
+    --velvet: 350 65% 25%;
+    --cream: 40 50% 92%;
+    --success: 142 71% 45%;
+    --danger: 0 84% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html, body, #root {
+    @apply bg-background text-foreground;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  }
+  h1, h2, h3, .display {
+    font-family: "Bowlby One", system-ui, sans-serif;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* Subtle TV scanlines — only visible on the stage backdrop */
+.stage-scanlines::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.015) 0px,
+    rgba(255, 255, 255, 0.015) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  z-index: 1;
+}
+
+/* Marquee bulbs for game-show feel */
+.marquee-bulbs {
+  background-image: radial-gradient(
+    circle,
+    hsl(var(--gold)) 4px,
+    transparent 5px
+  );
+  background-size: 24px 24px;
+  background-repeat: repeat-x;
+  animation: marquee 3s linear infinite;
+}
+
+/* Pressable button depth */
+.btn-3d {
+  box-shadow:
+    0 4px 0 0 hsl(var(--gold) / 0.4),
+    0 6px 20px hsl(var(--gold) / 0.3);
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.btn-3d:active {
+  transform: translateY(4px);
+  box-shadow:
+    0 0 0 0 hsl(var(--gold) / 0.4),
+    0 0 20px hsl(var(--gold) / 0.3);
+}
+
+/* Glow pulse for active CTA */
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px hsl(var(--gold) / 0.4);
+  }
+  50% {
+    box-shadow: 0 0 40px hsl(var(--gold) / 0.7);
+  }
+}
+.glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
