@@ -26,10 +26,12 @@ create table if not exists players (
   is_host boolean not null default false,
   score int not null default 0,
   ready boolean not null default false,
-  joined_at timestamptz not null default now(),
-  unique (game_id, client_id)
+  joined_at timestamptz not null default now()
 );
+-- Note: no unique constraint on (game_id, client_id) so one device
+-- can host multiple players (e.g., a parent filling out for a kid).
 create index if not exists players_game_id_idx on players (game_id);
+create index if not exists players_client_id_idx on players (client_id);
 
 -- ---- Player facts ----
 create table if not exists player_facts (

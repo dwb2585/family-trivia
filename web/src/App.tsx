@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, type Game, type Player, type Question, type Answer } from "@/lib/supabase";
 import { uuid, randomCode } from "@/lib/utils";
-import { DEFAULT_FACTS } from "@/lib/facts";
 import { generateQuestions, scoreAnswer } from "@/lib/gameLogic";
 
 import { Home } from "@/components/screens/Home";
@@ -16,11 +15,11 @@ type Phase = "home" | "create" | "join" | "lobby" | "playing" | "finished";
 interface Session {
   clientId: string;
   gameId: string;
-  playerId: string;
   hostToken: string | null;
+  activePlayerId: string | null;   // which player is "playing as" right now
 }
 
-const SESSION_KEY = "ft_session_v1";
+const SESSION_KEY = "***";
 
 function loadSession(): Session | null {
   try {
@@ -41,27 +40,33 @@ export default function App() {
   const [phase, setPhase] = useState<Phase>("home");
   const [session, setSession] = useState<Session | null>(() => loadSession());
   const [game, setGame] = useState<Game | null>(null);
-  const [me, setMe] = useState<Player | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [facts, setFacts] = useState<Record<string, string>>({});
+  // facts[playerId][factKey] = factValue
+  const [factsByPlayer, setFactsByPlayer] = useState<Record<string, Record<string, string>>>({});
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Answer[]>([]);
-  const [error, setError] = useState<string | null>(null);
 
   const clientIdRef = useRef(session?.clientId || uuid());
-  useEffect(() => {
-    if (!session) {
-      const s: Session = { clientId: clientIdRef.current, gameId: "", playerId: "", hostToken: null };
-      // Don't save yet — we only save once the user actually joins/creates.
-    }
-  }, [session]);
 
-  // ---- Realtime subscriptions (per-game) ----
+  // Players on this device (derived from players + clientId match)
+  const myPlayers = useMemo(
+    () => players.filter((p) => p.client_id === clientIdRef.current),
+    [players],
+  );
+  const me = useMemo(
+    () =>
+      myPlayers.find((p) => p.id === session?.activePlayerId) ??
+      myPlayers[0] ??
+      null,
+    [myPlayers, session?.activePlayerId],
+  );
+
+  // ---- Realtime subscriptions ----
   useEffect(() => {
     if (!session?.gameId) return;
     const gameId = session.gameId;
 
-    const gamesChannel = supabase
+    const ch = supabase
       .channel(`game-${gameId}`)
       .on(
         "postgres_changes",
@@ -70,7 +75,6 @@ export default function App() {
           if (payload.eventType === "DELETE") return;
           const next = payload.new as Game;
           setGame(next);
-          // Auto-advance phase based on game status
           if (next.status === "playing") setPhase((p) => (p === "lobby" || p === "playing" ? "playing" : p));
           if (next.status === "finished") setPhase("finished");
         },
@@ -79,8 +83,8 @@ export default function App() {
         "postgres_changes",
         { event: "*", schema: "public", table: "players", filter: `game_id=eq.${gameId}` },
         (payload) => {
-          const row = payload.new as Player;
           if (payload.eventType === "DELETE") return;
+          const row = payload.new as Player;
           setPlayers((prev) => {
             const idx = prev.findIndex((p) => p.id === row.id);
             if (idx === -1) return [...prev, row];
@@ -88,15 +92,14 @@ export default function App() {
             copy[idx] = row;
             return copy;
           });
-          if (row.client_id === clientIdRef.current) setMe(row);
         },
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "questions", filter: `game_id=eq.${gameId}` },
         (payload) => {
-          const row = payload.new as Question;
           if (payload.eventType === "DELETE") return;
+          const row = payload.new as Question;
           setQuestions((prev) => {
             const idx = prev.findIndex((q) => q.id === row.id);
             if (idx === -1) return [...prev, row].sort((a, b) => a.question_index - b.question_index);
@@ -110,8 +113,8 @@ export default function App() {
         "postgres_changes",
         { event: "*", schema: "public", table: "answers", filter: `game_id=eq.${gameId}` },
         (payload) => {
-          const row = payload.new as Answer;
           if (payload.eventType === "DELETE") return;
+          const row = payload.new as Answer;
           setAnswers((prev) => {
             const idx = prev.findIndex((a) => a.id === row.id);
             if (idx === -1) return [...prev, row];
@@ -124,26 +127,24 @@ export default function App() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(gamesChannel);
+      supabase.removeChannel(ch);
     };
   }, [session?.gameId]);
 
-  // ---- Initial data fetch for the session ----
+  // ---- Initial fetch for the session ----
   useEffect(() => {
     if (!session?.gameId) return;
     let cancelled = false;
 
     (async () => {
-      const [{ data: g }, { data: ps }, { data: qs }] = await Promise.all([
+      const [{ data: g }, { data: ps }] = await Promise.all([
         supabase.from("games").select("*").eq("id", session.gameId).maybeSingle(),
         supabase.from("players").select("*").eq("game_id", session.gameId),
-        supabase.from("questions").select("*").eq("game_id", session.gameId),
       ]);
 
       if (cancelled) return;
 
       if (!g) {
-        // Game was deleted — clear session.
         saveSession(null);
         setSession(null);
         setPhase("home");
@@ -152,22 +153,22 @@ export default function App() {
 
       setGame(g);
       setPlayers((ps ?? []) as Player[]);
-      setQuestions((qs ?? []) as Question[]);
-      const meRow = (ps ?? []).find((p: Player) => p.client_id === clientIdRef.current);
-      if (meRow) setMe(meRow as Player);
 
-      // Restore fact values for me
-      if (meRow) {
+      // Restore facts for ALL my players
+      const myRows = (ps ?? []).filter((p: Player) => p.client_id === clientIdRef.current);
+      if (myRows.length > 0) {
+        const ids = myRows.map((p) => p.id);
         const { data: fs } = await supabase
           .from("player_facts")
           .select("*")
-          .eq("player_id", (meRow as Player).id);
+          .in("player_id", ids);
         if (!cancelled && fs) {
-          const map: Record<string, string> = {};
-          for (const f of fs as { fact_key: string; fact_value: string }[]) {
-            map[f.fact_key] = f.fact_value;
+          const map: Record<string, Record<string, string>> = {};
+          for (const f of fs as { player_id: string; fact_key: string; fact_value: string }[]) {
+            if (!map[f.player_id]) map[f.player_id] = {};
+            map[f.player_id][f.fact_key] = f.fact_value;
           }
-          setFacts(map);
+          setFactsByPlayer(map);
         }
         const { data: ans } = await supabase
           .from("answers")
@@ -189,8 +190,33 @@ export default function App() {
 
   // ---- Actions ----
 
+  const createOrJoinPlayer = useCallback(
+    async (gameId: string, name: string, isHost: boolean, hostToken: string | null) => {
+      const { data: p, error } = await supabase
+        .from("players")
+        .insert({
+          game_id: gameId,
+          client_id: clientIdRef.current,
+          name,
+          is_host: isHost,
+        })
+        .select()
+        .single();
+      if (error || !p) throw new Error(error?.message || "Could not add player");
+      const newSession: Session = {
+        clientId: clientIdRef.current,
+        gameId,
+        hostToken,
+        activePlayerId: p.id,
+      };
+      saveSession(newSession);
+      setSession(newSession);
+      return p as Player;
+    },
+    [],
+  );
+
   const handleHost = useCallback(async (hostName: string) => {
-    setError(null);
     const code = randomCode();
     const hostToken = uuid();
 
@@ -201,34 +227,12 @@ export default function App() {
       .single();
     if (gErr || !g) throw new Error(gErr?.message || "Could not create game");
 
-    const { data: p, error: pErr } = await supabase
-      .from("players")
-      .insert({
-        game_id: g.id,
-        client_id: clientIdRef.current,
-        name: hostName,
-        is_host: true,
-      })
-      .select()
-      .single();
-    if (pErr || !p) throw new Error(pErr?.message || "Could not create host player");
-
-    const newSession: Session = {
-      clientId: clientIdRef.current,
-      gameId: g.id,
-      playerId: p.id,
-      hostToken,
-    };
-    saveSession(newSession);
-    setSession(newSession);
+    await createOrJoinPlayer(g.id, hostName, true, hostToken);
     setGame(g);
-    setMe(p);
-    setPlayers([p]);
     setPhase("lobby");
-  }, []);
+  }, [createOrJoinPlayer]);
 
   const handleJoin = useCallback(async (code: string, name: string) => {
-    setError(null);
     const { data: g, error: gErr } = await supabase
       .from("games")
       .select("*")
@@ -237,59 +241,37 @@ export default function App() {
     if (gErr || !g) throw new Error("Game not found");
     if (g.status !== "lobby") throw new Error("Game already started");
 
-    // Check we're not already in this game (by client_id)
-    const { data: existing } = await supabase
-      .from("players")
-      .select("*")
-      .eq("game_id", g.id)
-      .eq("client_id", clientIdRef.current)
-      .maybeSingle();
-
-    let playerRow: Player;
-    if (existing) {
-      playerRow = existing as Player;
-      // Update name in case they changed it
-      const { data: updated } = await supabase
-        .from("players")
-        .update({ name })
-        .eq("id", existing.id)
-        .select()
-        .single();
-      playerRow = (updated as Player) ?? playerRow;
-    } else {
-      const { data: p, error: pErr } = await supabase
-        .from("players")
-        .insert({
-          game_id: g.id,
-          client_id: clientIdRef.current,
-          name,
-          is_host: false,
-        })
-        .select()
-        .single();
-      if (pErr || !p) throw new Error(pErr?.message || "Could not join game");
-      playerRow = p as Player;
-    }
-
-    const newSession: Session = {
-      clientId: clientIdRef.current,
-      gameId: g.id,
-      playerId: playerRow.id,
-      hostToken: null,
-    };
-    saveSession(newSession);
-    setSession(newSession);
+    await createOrJoinPlayer(g.id, name, false, null);
     setGame(g);
-    setMe(playerRow);
     setPhase("lobby");
+  }, [createOrJoinPlayer]);
+
+  const handleAddPlayer = useCallback(
+    async (name: string) => {
+      if (!session?.gameId) throw new Error("Not in a game");
+      await createOrJoinPlayer(session.gameId, name, false, session.hostToken);
+    },
+    [session?.gameId, session?.hostToken, createOrJoinPlayer],
+  );
+
+  const handleSetActivePlayer = useCallback((playerId: string) => {
+    setSession((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, activePlayerId: playerId };
+      saveSession(next);
+      return next;
+    });
   }, []);
 
   const handleFactChange = useCallback((key: string, value: string) => {
-    setFacts((prev) => ({ ...prev, [key]: value }));
-  }, []);
+    if (!me) return;
+    setFactsByPlayer((prev) => ({
+      ...prev,
+      [me.id]: { ...(prev[me.id] || {}), [key]: value },
+    }));
+  }, [me]);
 
   const persistFacts = useCallback(async (playerId: string, next: Record<string, string>) => {
-    // Upsert each non-empty fact
     const rows = Object.entries(next)
       .filter(([, v]) => v.trim().length > 0)
       .map(([fact_key, fact_value]) => ({
@@ -297,9 +279,7 @@ export default function App() {
         fact_key,
         fact_value: fact_value.trim(),
       }));
-
     if (rows.length === 0) return;
-
     const { error } = await supabase
       .from("player_facts")
       .upsert(rows, { onConflict: "player_id,fact_key" });
@@ -307,22 +287,24 @@ export default function App() {
   }, []);
 
   const handleReady = useCallback(async () => {
-    if (!me) return;
-    await persistFacts(me.id, facts);
-    const { error } = await supabase
-      .from("players")
-      .update({ ready: true })
-      .eq("id", me.id);
-    if (error) throw new Error(error.message);
-  }, [me, facts, persistFacts]);
+    // Mark all my players ready + persist their facts.
+    for (const p of myPlayers) {
+      const pf = factsByPlayer[p.id] || {};
+      await persistFacts(p.id, pf);
+      const { error } = await supabase
+        .from("players")
+        .update({ ready: true })
+        .eq("id", p.id);
+      if (error) throw new Error(error.message);
+    }
+  }, [myPlayers, factsByPlayer, persistFacts]);
 
   const handleStart = useCallback(async () => {
     if (!game || !session?.hostToken) throw new Error("Only the host can start");
 
-    // Persist host's facts too, in case they hit Start without clicking Ready.
-    if (me) await persistFacts(me.id, facts);
+    // Persist host's facts too (in case they hit Start without clicking Ready).
+    if (me) await persistFacts(me.id, factsByPlayer[me.id] || {});
 
-    // Fetch all players + their facts for question generation.
     const [{ data: playersAll }, { data: playerIds }] = await Promise.all([
       supabase.from("players").select("*").eq("game_id", game.id),
       supabase.from("players").select("id").eq("game_id", game.id),
@@ -341,9 +323,7 @@ export default function App() {
     });
 
     if (generated.length === 0) {
-      throw new Error(
-        "Not enough facts to generate questions. Make sure everyone entered at least one fact.",
-      );
+      throw new Error("Not enough facts to generate questions. Make sure everyone entered at least one fact.");
     }
 
     const { error: insErr } = await supabase.from("questions").insert(generated);
@@ -360,7 +340,7 @@ export default function App() {
       .eq("id", game.id)
       .eq("host_token", session.hostToken);
     if (gErr) throw new Error(gErr.message);
-  }, [game, session?.hostToken, me, facts, persistFacts]);
+  }, [game, session?.hostToken, me, factsByPlayer, persistFacts]);
 
   const handleAnswer = useCallback(
     async (optionIndex: number) => {
@@ -368,18 +348,13 @@ export default function App() {
       const currentQ = questions.find((q) => q.question_index === game.current_question);
       if (!currentQ) return;
 
-      // Compute score: 100 if correct, 50 bonus if first correct, speed bonus.
       const isCorrect = optionIndex === currentQ.correct_option_index;
       const alreadyAnswered = answers.find(
         (a) => a.question_id === currentQ.id && a.player_id === me.id,
       );
       if (alreadyAnswered) return;
 
-      // msTaken: since we don't track started_at precisely, use 0 for now.
-      // (Could add a "question_started_at" to games later for accuracy.)
-      const msTaken = 0;
-
-      // First-correct detection requires existing answers
+      const msTaken = 0; // no question_started_at tracked yet
       const existingCorrect = answers.some(
         (a) => a.question_id === currentQ.id && a.is_correct,
       );
@@ -396,7 +371,6 @@ export default function App() {
       });
       if (error) throw new Error(error.message);
 
-      // Update player score (best-effort)
       if (points > 0) {
         await supabase
           .from("players")
@@ -443,29 +417,21 @@ export default function App() {
   }, [game]);
 
   const handleResume = useCallback(() => {
-    // Phase will be set by initial fetch effect
-    setPhase("lobby");
+    // Phase will be set by initial fetch effect.
   }, []);
 
   const handleLeave = useCallback(() => {
     saveSession(null);
     setSession(null);
     setGame(null);
-    setMe(null);
     setPlayers([]);
-    setFacts({});
+    setFactsByPlayer({});
     setQuestions([]);
     setAnswers([]);
     setPhase("home");
   }, []);
 
   const handlePlayAgain = useCallback(() => {
-    // Reset to lobby with fresh facts/players (game stays, just reset state)
-    setFacts({});
-    setQuestions([]);
-    setAnswers([]);
-    setPhase("lobby");
-    // Host can edit questions/state. For v1, simplest: leave.
     handleLeave();
   }, [handleLeave]);
 
@@ -474,8 +440,8 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const joinCode = params.get("join");
     if (joinCode && !session && phase === "home") {
-      setPhase("join");
-      // Pre-fill code via initialCode prop — handled by JoinGame reading location
+      // Trigger join flow via a custom event
+      window.dispatchEvent(new CustomEvent("deeplink-join", { detail: joinCode }));
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, [phase, session]);
@@ -499,24 +465,10 @@ export default function App() {
     [currentQuestion, answers],
   );
 
-  // Check env
-  if (!import.meta.env.VITE_SUPABASE_URL) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-stage">
-        <div className="max-w-md bg-card border border-border rounded-2xl p-8 text-center">
-          <h1 className="font-display text-3xl text-gold mb-4">⚙️ Setup needed</h1>
-          <p className="text-cream/80 mb-4">
-            Copy <code className="bg-stage px-2 py-1 rounded">web/.env.example</code> to{" "}
-            <code className="bg-stage px-2 py-1 rounded">web/.env.local</code> and fill in your Supabase URL and anon key.
-          </p>
-          <pre className="text-left text-xs bg-stage p-3 rounded-lg overflow-x-auto text-cream/60">
-{`VITE_SUPABASE_URL=https://xxx.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOi...`}
-          </pre>
-        </div>
-      </div>
-    );
-  }
+  const myFacts = useMemo(
+    () => (me ? factsByPlayer[me.id] || {} : {}),
+    [me, factsByPlayer],
+  );
 
   // ---- Render ----
   if (phase === "home") {
@@ -542,13 +494,17 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOi...`}
     return (
       <Lobby
         code={game.code}
-        me={me}
+        myPlayers={myPlayers}
+        activePlayerId={me.id}
         players={players}
-        facts={facts}
+        facts={myFacts}
         onFactChange={handleFactChange}
+        onSetActive={handleSetActivePlayer}
+        onAddPlayer={handleAddPlayer}
         onReady={handleReady}
         onStart={handleStart}
         onCopyCode={handleCopyCode}
+        isHost={!!session?.hostToken}
       />
     );
   }
@@ -557,6 +513,7 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOi...`}
     return (
       <GamePlay
         me={me}
+        myPlayers={myPlayers}
         players={players}
         question={currentQuestion}
         questionIndex={game.current_question}
@@ -568,6 +525,7 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOi...`}
         onAnswer={handleAnswer}
         onReveal={handleReveal}
         onNext={handleNext}
+        onSetActive={handleSetActivePlayer}
       />
     );
   }

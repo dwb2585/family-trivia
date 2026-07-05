@@ -1,18 +1,23 @@
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Marquee } from "@/components/ui/Marquee";
 import { DEFAULT_FACTS, type FactDef } from "@/lib/facts";
 import type { Player } from "@/lib/supabase";
-import { cn } from "@/lib/utils";
+import { cn, uuid } from "@/lib/utils";
 
 interface LobbyProps {
   code: string;
-  me: Player;
+  myPlayers: Player[];
+  activePlayerId: string;
   players: Player[];
-  facts: Record<string, string>;           // fact_key -> value (for me)
+  facts: Record<string, string>;
+  isHost: boolean;
   onFactChange: (key: string, value: string) => void;
+  onSetActive: (playerId: string) => void;
+  onAddPlayer: (name: string) => Promise<void>;
   onReady: () => Promise<void>;
   onStart: () => Promise<void>;
   onCopyCode: () => void;
@@ -20,16 +25,26 @@ interface LobbyProps {
 
 export function Lobby({
   code,
-  me,
+  myPlayers,
+  activePlayerId,
   players,
   facts,
+  isHost,
   onFactChange,
+  onSetActive,
+  onAddPlayer,
   onReady,
   onStart,
   onCopyCode,
 }: LobbyProps) {
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const activePlayer = myPlayers.find((p) => p.id === activePlayerId) ?? myPlayers[0];
+  const allMyReady = myPlayers.every((p) => p.ready);
   const everyoneReady = players.length >= 2 && players.every((p) => p.ready);
 
   async function handleReady() {
@@ -50,7 +65,27 @@ export function Lobby({
     }
   }
 
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newName.trim()) return;
+    setAdding(true);
+    try {
+      await onAddPlayer(newName.trim());
+      setNewName("");
+      setShowAdd(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  // The "I'm ready" check needs at least all my players to have facts.
   const factsComplete = DEFAULT_FACTS.every((f) => (facts[f.key] || "").trim().length > 0);
+  const allMyHaveFacts = myPlayers.every(
+    (p) => p.id === activePlayerId || allMyReady /* other players already marked ready */,
+  );
+  const canMarkReady = factsComplete && allMyHaveFacts;
 
   return (
     <div className="min-h-screen flex flex-col px-4 py-6 stage-scanlines relative">
@@ -60,7 +95,7 @@ export function Lobby({
         <Marquee className="mb-4" />
 
         {/* Code banner */}
-        <div className="text-center mb-6 animate-fade-in-up">
+        <div className="text-center mb-5 animate-fade-in-up">
           <p className="text-cream/60 text-xs uppercase tracking-[0.3em] mb-2">Game Code</p>
           <button
             onClick={onCopyCode}
@@ -76,76 +111,157 @@ export function Lobby({
           </button>
         </div>
 
-        {/* Players list */}
+        {/* Players on this device — tabs */}
         <Card className="mb-4">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Players ({players.length})</CardTitle>
-              {me.is_host ? (
-                <Badge variant="gold">HOST</Badge>
-              ) : null}
+              <CardTitle className="text-lg">
+                {myPlayers.length === 1 ? "You" : `On this device (${myPlayers.length})`}
+              </CardTitle>
+              {isHost ? <Badge variant="gold">HOST</Badge> : null}
             </div>
           </CardHeader>
           <CardBody className="pt-2">
-            <ul className="space-y-2">
-              {players.map((p) => (
-                <li
+            <div className="flex flex-wrap gap-2 mb-3">
+              {myPlayers.map((p) => (
+                <button
                   key={p.id}
+                  onClick={() => onSetActive(p.id)}
                   className={cn(
-                    "flex items-center justify-between px-4 py-2.5 rounded-xl border",
-                    p.id === me.id ? "border-gold/40 bg-gold/5" : "border-border bg-stage/40",
+                    "px-3 py-1.5 rounded-full text-sm font-bold transition-all",
+                    "border-2",
+                    p.id === activePlayerId
+                      ? "bg-gold text-stage border-gold"
+                      : p.ready
+                      ? "bg-success/20 text-success border-success/40"
+                      : "bg-stage/60 text-foreground/80 border-border hover:border-gold/50",
                   )}
                 >
-                  <span className="font-semibold flex items-center gap-2">
-                    {p.is_host ? "🎤" : "🎮"} {p.name}
-                    {p.id === me.id ? <span className="text-cream/40 text-xs">(you)</span> : null}
-                  </span>
-                  <Badge variant={p.ready ? "success" : "default"}>
-                    {p.ready ? "✓ Ready" : "Entering…"}
-                  </Badge>
-                </li>
+                  {p.name}
+                  {p.ready ? " ✓" : ""}
+                </button>
               ))}
+              <button
+                onClick={() => setShowAdd(true)}
+                className="px-3 py-1.5 rounded-full text-sm font-bold border-2 border-dashed border-gold/30 text-gold/70 hover:text-gold hover:border-gold transition-colors"
+              >
+                + Add player
+              </button>
+            </div>
+            {showAdd ? (
+              <form onSubmit={handleAdd} className="flex gap-2">
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Name (e.g., the kid)"
+                  autoFocus
+                  maxLength={24}
+                  className="flex-1 h-10 px-3 rounded-lg bg-stage border border-border text-foreground focus:outline-none focus:border-gold"
+                />
+                <Button type="submit" size="sm" loading={adding} disabled={!newName.trim()}>
+                  Add
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowAdd(false);
+                    setNewName("");
+                  }}
+                >
+                  Cancel
+                </Button>
+              </form>
+            ) : null}
+          </CardBody>
+        </Card>
+
+        {/* Other players in the game */}
+        <Card className="mb-4">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg">
+              In the game ({players.length})
+            </CardTitle>
+          </CardHeader>
+          <CardBody className="pt-2">
+            <ul className="space-y-1.5">
+              {players.map((p) => {
+                const isMine = p.client_id === myPlayers[0]?.client_id;
+                return (
+                  <li
+                    key={p.id}
+                    className={cn(
+                      "flex items-center justify-between px-3 py-2 rounded-xl border text-sm",
+                      isMine ? "border-gold/30 bg-gold/5" : "border-border bg-stage/30",
+                    )}
+                  >
+                    <span className="font-semibold flex items-center gap-1.5">
+                      {p.is_host ? "🎤" : "🎮"} {p.name}
+                      {isMine && myPlayers.length > 1 ? (
+                        <span className="text-cream/40 text-xs">(on your device)</span>
+                      ) : null}
+                    </span>
+                    <Badge variant={p.ready ? "success" : "default"}>
+                      {p.ready ? "✓" : "…"}
+                    </Badge>
+                  </li>
+                );
+              })}
             </ul>
           </CardBody>
         </Card>
 
-        {/* Fact entry form */}
-        <Card className="mb-4 flex-1">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Tell us about you</CardTitle>
-            <p className="text-foreground/60 text-xs mt-1">
-              Others will try to guess these answers. Be specific — funnier is better!
-            </p>
-          </CardHeader>
-          <CardBody className="pt-2">
-            <div className="space-y-3">
-              {DEFAULT_FACTS.map((fact) => (
-                <FactField
-                  key={fact.key}
-                  fact={fact}
-                  value={facts[fact.key] || ""}
-                  onChange={(v) => onFactChange(fact.key, v)}
-                  disabled={me.ready}
-                />
-              ))}
-            </div>
-          </CardBody>
-        </Card>
+        {/* Fact entry for active player */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activePlayer?.id || "none"}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Card className="mb-4 flex-1">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg">
+                  {activePlayer?.name}'s facts
+                </CardTitle>
+                <p className="text-foreground/60 text-xs mt-1">
+                  {activePlayer?.ready
+                    ? "Locked in. Switch tabs to edit another player."
+                    : "Others will try to guess these. Specific = funnier."}
+                </p>
+              </CardHeader>
+              <CardBody className="pt-2">
+                <div className="space-y-3">
+                  {DEFAULT_FACTS.map((fact) => (
+                    <FactField
+                      key={fact.key}
+                      fact={fact}
+                      value={facts[fact.key] || ""}
+                      onChange={(v) => onFactChange(fact.key, v)}
+                      disabled={!!activePlayer?.ready}
+                    />
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+          </motion.div>
+        </AnimatePresence>
 
         {/* Action button */}
         <div className="sticky bottom-0 pt-4 pb-2 bg-gradient-to-t from-stage via-stage to-transparent">
-          {me.is_host ? (
+          {isHost ? (
             <Button
               onClick={handleStart}
               size="xl"
               fullWidth
               loading={starting}
-              disabled={!me.ready || !factsComplete}
+              disabled={!allMyReady || players.length < 2}
             >
-              {!me.ready
-                ? "Fill in your facts first"
-                : !factsComplete
-                ? "Answer all questions first"
+              {!allMyReady
+                ? "Mark yourself ready first"
                 : players.length < 2
                 ? "Waiting for players…"
                 : !everyoneReady
@@ -158,10 +274,14 @@ export function Lobby({
               size="xl"
               fullWidth
               loading={saving}
-              disabled={!factsComplete || me.ready}
-              variant={me.ready ? "secondary" : "primary"}
+              disabled={!canMarkReady || allMyReady}
+              variant={allMyReady ? "secondary" : "primary"}
             >
-              {me.ready ? "✓ You're ready — waiting for host" : "🎯 I'm Ready"}
+              {allMyReady
+                ? "✓ You're ready — waiting for host"
+                : !factsComplete
+                ? "Fill in all facts first"
+                : `🎯 I'm Ready (${myPlayers.filter((p) => p.ready).length}/${myPlayers.length})`}
             </Button>
           )}
         </div>
