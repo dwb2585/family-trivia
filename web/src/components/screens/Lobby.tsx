@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Marquee } from "@/components/ui/Marquee";
 import { LeaveButton } from "@/components/ui/LeaveButton";
 import { DEFAULT_FACTS, type FactDef } from "@/lib/facts";
+import { avatarFor } from "@/lib/family";
 import type { Player, ProfileCustomFact } from "@/lib/supabase";
 import { cn, uuid } from "@/lib/utils";
 
@@ -19,6 +20,8 @@ interface LobbyProps {
   myFactsByPlayer: Record<string, Record<string, string>>;
   /** Custom (user-defined) facts for the active player */
   customFacts: ProfileCustomFact[];
+  /** full_name -> avatar emoji overrides from each profile */
+  avatarOverrides: Record<string, string>;
   /** True if this player's facts were just loaded from their saved profile */
   prefilledFromProfile?: boolean;
   isHost: boolean;
@@ -40,6 +43,7 @@ export function Lobby({
   facts,
   myFactsByPlayer,
   customFacts,
+  avatarOverrides,
   prefilledFromProfile = false,
   isHost,
   onFactChange,
@@ -176,6 +180,7 @@ export function Lobby({
                       : "bg-stage/50 text-foreground/80 border-border hover:border-cyan/60",
                   )}
                 >
+                  <span className="text-base">{avatarFor(p.name, avatarOverrides)}</span>
                   {p.name}
                   {p.ready ? "" : ""}
                 </button>
@@ -246,6 +251,7 @@ export function Lobby({
                         )}
                         style={{ color: p.is_host ? "hsl(var(--gold))" : "hsl(var(--cyan))" }}
                       />
+                      <span className="text-base">{avatarFor(p.name, avatarOverrides)}</span>
                       {p.is_host ? "Host " : ""}{p.name}
                       {isMine && myPlayers.length > 1 ? (
                         <span className="text-cream/40 text-xs">(on your device)</span>

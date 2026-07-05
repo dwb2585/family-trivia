@@ -72,6 +72,7 @@ export interface Answer {
 export interface Profile {
   full_name: string;
   facts: Record<string, string>;
+  avatar_emoji?: string | null;
   updated_at: string;
 }
 

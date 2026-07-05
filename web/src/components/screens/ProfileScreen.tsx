@@ -15,8 +15,21 @@ import {
   createCustomFact,
   updateCustomFact,
   deleteCustomFact,
+  setProfileAvatar,
 } from "@/lib/profiles";
 import { cn } from "@/lib/utils";
+
+/**
+ * Avatar options shown in the picker. Curated, single-glyph emojis so they
+ * render reliably across iOS / Android / desktop. Falls back to roster
+ * default (in family.ts) when the user picks "Use roster default".
+ */
+const AVATAR_OPTIONS: string[] = [
+  "😎", "🤩", "🥳", "😺", "🐶", "🦊", "🐼", "🦁", "🐯", "🐸",
+  "🦄", "🐝", "🦋", "🌈", "⚡", "🔥", "💎", "🌟", "✨", "🚀",
+  "🎸", "🎮", "📚", "🎬", "🍕", "🍩", "🌮", "🍣", "🍔", "☕",
+  "🏀", "⚽", "🏆", "👑", "💀", "🤖", "👻", "🎯", "🧠", "💯",
+];
 
 interface ProfileScreenProps {
   initialName?: string;
@@ -35,6 +48,9 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
   const [name, setName] = useState(initialName);
   const [defaultFacts, setDefaultFacts] = useState<Record<string, string>>({});
   const [customFacts, setCustomFacts] = useState<ProfileCustomFact[]>([]);
+  const [avatarEmoji, setAvatarEmoji] = useState<string | null>(null);
+  // When avatarEmoji is null we fall back to the family roster default.
+  // `avatarEmoji === "__cleared__"` means user explicitly chose "use default".
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +61,7 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
     if (!name.trim()) {
       setDefaultFacts({});
       setCustomFacts([]);
+      setAvatarEmoji(null);
       return;
     }
     let cancelled = false;
@@ -62,6 +79,12 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
       if (profile) Object.assign(blank, profile.facts);
       setDefaultFacts(blank);
       setCustomFacts(customs);
+      // 0/empty-string from DB → null (use roster default).
+      setAvatarEmoji(
+        profile && profile.avatar_emoji && profile.avatar_emoji.length > 0
+          ? profile.avatar_emoji
+          : null,
+      );
       setLoading(false);
     })();
     return () => {
@@ -88,6 +111,17 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
     const next = { ...defaultFacts, [key]: value };
     setDefaultFacts(next);
     scheduleSaveDefaults(next);
+  }
+
+  /**
+   * Save the avatar to the profile. Pass "" to clear (use roster default).
+   * Optimistically updates local state, persists to Supabase.
+   */
+  async function handleAvatarPick(emoji: string) {
+    if (!name.trim()) return;
+    const next = emoji || null;
+    setAvatarEmoji(next);
+    await setProfileAvatar(name, next ?? "");
   }
 
   // ----- Custom facts handlers -----
@@ -149,6 +183,25 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
             <div className="text-center text-cream/60 py-8">Loading profile…</div>
           ) : (
             <>
+              {/* Avatar picker */}
+              <Card className="mb-4">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">Your avatar</CardTitle>
+                  <p className="text-foreground/60 text-xs mt-1">
+                    Shown next to your name in lobbies, scoreboards, and reveals.
+                  </p>
+                </CardHeader>
+                <CardBody className="pt-2">
+                  <AvatarPicker
+                    current={avatarEmoji}
+                    rosterDefault={
+                      FAMILY.find((m) => m.fullName === name)?.emoji ?? ""
+                    }
+                    onPick={handleAvatarPick}
+                  />
+                </CardBody>
+              </Card>
+
               {/* Default 8 facts */}
               <Card className="mb-4">
                 <CardHeader className="pb-2">
@@ -442,6 +495,80 @@ function NewCustomFactForm({
           Add Question
         </button>
       </div>
+    </div>
+  );
+}
+/**
+ * AvatarPicker — current avatar preview + a curated emoji grid + "use default"
+ * affordance. Tapping an emoji saves it immediately (no extra button).
+ */
+function AvatarPicker({
+  current,
+  rosterDefault,
+  onPick,
+}: {
+  current: string | null;
+  rosterDefault: string;
+  onPick: (emoji: string) => void;
+}) {
+  const active = current ?? rosterDefault;
+  return (
+    <div>
+      {/* Big preview */}
+      <div className="flex items-center gap-4 mb-4">
+        <div className="w-20 h-20 rounded-2xl bg-stage border border-cyan/40 shadow-cyan-glow-sm flex items-center justify-center text-5xl">
+          {active || "?"}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-cream/50 font-bold">
+            Currently
+          </div>
+          <div className="text-base font-bold text-foreground truncate">
+            {current ? "Custom avatar" : rosterDefault ? "Family default" : "No avatar"}
+          </div>
+        </div>
+      </div>
+
+      {/* Emoji grid */}
+      <div className="grid grid-cols-7 sm:grid-cols-9 gap-1.5">
+        {AVATAR_OPTIONS.map((emoji, i) => {
+          const isActive = current === emoji;
+          return (
+            <motion.button
+              key={`${emoji}-${i}`}
+              type="button"
+              onClick={() => onPick(emoji)}
+              whileTap={{ scale: 0.9 }}
+              className={cn(
+                "aspect-square rounded-lg flex items-center justify-center text-2xl",
+                "transition-all duration-150",
+                "border-2",
+                isActive
+                  ? "bg-cyan/15 border-cyan shadow-cyan-glow-sm"
+                  : "bg-stage/40 border-transparent hover:border-cyan/40 hover:bg-stage/60",
+              )}
+              aria-label={`Pick ${emoji} as your avatar`}
+            >
+              {emoji}
+            </motion.button>
+          );
+        })}
+      </div>
+
+      {/* Use roster default */}
+      <button
+        type="button"
+        onClick={() => onPick("")}
+        className={cn(
+          "mt-3 w-full h-10 rounded-lg text-sm font-bold transition-all",
+          "border",
+          current === null
+            ? "bg-gold/15 border-gold text-gold"
+            : "bg-stage/40 border-border text-cream/60 hover:border-gold/40 hover:text-gold",
+        )}
+      >
+        Use family roster default{rosterDefault ? ` (${rosterDefault})` : ""}
+      </button>
     </div>
   );
 }

@@ -4,25 +4,29 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle, GlowCard } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Marquee } from "@/components/ui/Marquee";
-import { FAMILY } from "@/lib/family";
+import { FAMILY, avatarFor } from "@/lib/family";
 import type { Player } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
 interface FinalProps {
   players: Player[];
+  avatarOverrides: Record<string, string>;
   onPlayAgain: () => void;
   onLeave: () => void;
 }
 
-/** Look up the CWABS letter + color for a name. */
-function familyMeta(name: string): { letter: string; color: string; emoji: string } {
+/** Look up the CWABS letter + color + avatar emoji for a name. */
+function familyMeta(name: string, overrides?: Record<string, string>): { letter: string; color: string; emoji: string } {
   const m = FAMILY.find((f) => f.fullName === name);
-  return m
-    ? { letter: m.letter, color: m.color, emoji: m.emoji }
-    : { letter: name[0]?.toUpperCase() ?? "?", color: "hsl(var(--cyan))", emoji: "" };
+  if (!m) {
+    return { letter: name[0]?.toUpperCase() ?? "?", color: "hsl(var(--cyan))", emoji: "" };
+  }
+  // Use override emoji if set, else the roster default.
+  const overrideEmoji = overrides?.[name];
+  return { letter: m.letter, color: m.color, emoji: overrideEmoji || m.emoji };
 }
 
-export function Final({ players, onPlayAgain, onLeave }: FinalProps) {
+export function Final({ players, avatarOverrides, onPlayAgain, onLeave }: FinalProps) {
   const sorted = [...players].sort((a, b) => b.score - a.score);
   const winner = sorted[0];
   const [confetti, setConfetti] = useState(false);
@@ -33,7 +37,7 @@ export function Final({ players, onPlayAgain, onLeave }: FinalProps) {
     return () => clearTimeout(t);
   }, []);
 
-  const winnerMeta = winner ? familyMeta(winner.name) : null;
+  const winnerMeta = winner ? familyMeta(winner.name, avatarOverrides) : null;
 
   return (
     <div className="relative min-h-screen flex flex-col items-center px-4 py-8 overflow-hidden bg-grid">
@@ -86,7 +90,7 @@ export function Final({ players, onPlayAgain, onLeave }: FinalProps) {
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
           >
             <h1
-              className="font-display text-5xl sm:text-6xl leading-none mb-2"
+              className="font-display text-5xl sm:text-6xl leading-none mb-2 flex items-baseline justify-center gap-3"
               style={{
                 background: "linear-gradient(135deg, hsl(var(--gold)) 0%, hsl(38 100% 72%) 60%, hsl(var(--gold)) 100%)",
                 WebkitBackgroundClip: "text",
@@ -95,7 +99,16 @@ export function Final({ players, onPlayAgain, onLeave }: FinalProps) {
                 filter: "drop-shadow(0 0 24px hsl(var(--gold) / 0.5))",
               }}
             >
-              {winner ? `${winner.name}` : "Tie!"}
+              {winner ? (
+                <>
+                  {winnerMeta?.emoji ? (
+                    <span className="text-4xl" style={{ filter: "none" }}>
+                      {winnerMeta.emoji}
+                    </span>
+                  ) : null}
+                  {winner.name}
+                </>
+              ) : "Tie!"}
             </h1>
             <p className="text-cream/70 text-base mt-2">
               {winner ? "takes the win " : ""}
@@ -111,7 +124,7 @@ export function Final({ players, onPlayAgain, onLeave }: FinalProps) {
           <CardBody className="pt-2">
             <ol className="space-y-2">
               {sorted.map((p, i) => {
-                const meta = familyMeta(p.name);
+                const meta = familyMeta(p.name, avatarOverrides);
                 const isPodium = i < 3;
                 const isFirst = i === 0;
                 return (

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, type Game, type Player, type Question, type Answer, type ProfileCustomFact } from "@/lib/supabase";
 import { uuid, randomCode } from "@/lib/utils";
 import { generateQuestions, scoreAnswer } from "@/lib/gameLogic";
-import { getProfile, upsertProfile, getCustomFacts } from "@/lib/profiles";
+import { getProfile, upsertProfile, getCustomFacts, getProfilesForNames } from "@/lib/profiles";
 
 import { Home } from "@/components/screens/Home";
 import { CreateGame } from "@/components/screens/CreateGame";
@@ -54,6 +54,9 @@ export default function App() {
   // to render extra input fields below the 8 defaults, and by handleStart
   // to build proper prompts for question generation.
   const [customFactsByPlayer, setCustomFactsByPlayer] = useState<Record<string, ProfileCustomFact[]>>({});
+  // Per-name avatar emoji overrides pulled from each player's profile.
+  // Map keyed by full_name → emoji. Absent names fall back to the roster default.
+  const [avatarOverrides, setAvatarOverrides] = useState<Record<string, string>>({});
 
   const clientIdRef = useRef(session?.clientId || uuid());
 
@@ -163,6 +166,22 @@ export default function App() {
 
       setGame(g);
       setPlayers((ps ?? []) as Player[]);
+
+      // Pre-resolve avatar emojis for everyone in the game. Persisted per-
+      // profile so a player's chosen emoji follows them across games.
+      const nameList = (ps ?? []).map((p: Player) => p.name);
+      if (nameList.length > 0) {
+        const profiles = await getProfilesForNames(nameList);
+        if (!cancelled) {
+          const next: Record<string, string> = {};
+          for (const [n, prof] of Object.entries(profiles)) {
+            if (prof.avatar_emoji) next[n] = prof.avatar_emoji;
+          }
+          setAvatarOverrides(next);
+        }
+      } else {
+        setAvatarOverrides({});
+      }
 
       // CRITICAL: if the game is mid-play or finished, late joiners need
       // to fetch the existing questions + answers. Realtime only delivers
@@ -517,6 +536,22 @@ export default function App() {
     // Phase will be set by initial fetch effect.
   }, []);
 
+  /**
+   * Refresh avatar overrides for the current players in the game.
+   * Called after the profile screen edits an avatar so changes propagate
+   * immediately without needing to re-join the game.
+   */
+  const refreshAvatars = useCallback(async () => {
+    const nameList = players.map((p) => p.name);
+    if (nameList.length === 0) return;
+    const profiles = await getProfilesForNames(nameList);
+    const next: Record<string, string> = {};
+    for (const [n, prof] of Object.entries(profiles)) {
+      if (prof.avatar_emoji) next[n] = prof.avatar_emoji;
+    }
+    setAvatarOverrides(next);
+  }, [players]);
+
   const handleLeave = useCallback(() => {
     saveSession(null);
     setSession(null);
@@ -599,7 +634,7 @@ export default function App() {
   }
 
   if (phase === "profile") {
-    return <ProfileScreen onBack={() => setPhase("home")} />;
+    return <ProfileScreen onBack={() => { refreshAvatars(); setPhase("home"); }} />;
   }
 
   if (phase === "lobby" && game && me) {
@@ -612,6 +647,7 @@ export default function App() {
         facts={myFacts}
         myFactsByPlayer={myFactsByPlayer}
         customFacts={customFactsByPlayer[me.id] || []}
+        avatarOverrides={avatarOverrides}
         prefilledFromProfile={prefilledFromProfile.has(me.id)}
         onFactChange={handleFactChange}
         onSetActive={handleSetActivePlayer}
@@ -638,6 +674,7 @@ export default function App() {
         showResults={game.show_results}
         myAnswer={myAnswer}
         answersForQuestion={answersForCurrent}
+        avatarOverrides={avatarOverrides}
         isHost={!!session?.hostToken}
         onAnswer={handleAnswer}
         onReveal={handleReveal}
@@ -649,7 +686,7 @@ export default function App() {
   }
 
   if (phase === "finished") {
-    return <Final players={players} onPlayAgain={handlePlayAgain} onLeave={handleLeave} />;
+    return <Final players={players} avatarOverrides={avatarOverrides} onPlayAgain={handlePlayAgain} onLeave={handleLeave} />;
   }
 
   return (

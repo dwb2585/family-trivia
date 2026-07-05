@@ -5,7 +5,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Marquee } from "@/components/ui/Marquee";
 import { LeaveButton } from "@/components/ui/LeaveButton";
-import { FAMILY } from "@/lib/family";
+import { FAMILY, avatarFor } from "@/lib/family";
 import type { Answer, Player, Question } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +19,7 @@ interface GamePlayProps {
   showResults: boolean;
   myAnswer: Answer | null;
   answersForQuestion: Answer[];
+  avatarOverrides: Record<string, string>;
   isHost: boolean;
   onAnswer: (optionIndex: number) => Promise<void>;
   onReveal: () => Promise<void>;
@@ -27,9 +28,10 @@ interface GamePlayProps {
   onLeave: () => void;
 }
 
-/** Emoji avatar for a family member's full name. Falls back to a generic dot. */
-function emojiFor(fullName: string): string {
-  return FAMILY.find((m) => m.fullName === fullName)?.emoji ?? "";
+// Local helper kept for legacy `emojiFor(name)` call sites; delegates to the
+// shared library helper that consults profile overrides.
+function emojiFor(fullName: string, overrides?: Record<string, string>): string {
+  return avatarFor(fullName, overrides);
 }
 
 export function GamePlay({
@@ -42,6 +44,7 @@ export function GamePlay({
   showResults,
   myAnswer,
   answersForQuestion,
+  avatarOverrides,
   isHost,
   onAnswer,
   onReveal,
@@ -147,7 +150,10 @@ export function GamePlay({
                         p.id === me.id && "bg-cyan/15",
                       )}
                     >
-                      <span className="font-semibold">{p.name}</span>
+                      <span className="font-semibold flex items-center gap-2">
+                        <span className="text-base">{avatarFor(p.name, avatarOverrides)}</span>
+                        {p.name}
+                      </span>
                       <span className="text-xs text-cream/50 font-mono">{p.score} pts</span>
                     </button>
                   ))}
@@ -222,6 +228,7 @@ export function GamePlay({
                   myAnswer={myAnswer}
                   disabled={!!myAnswer || isMyQuestion}
                   onPick={handleAnswer}
+                  avatarOverrides={avatarOverrides}
                 />
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -281,7 +288,7 @@ export function GamePlay({
                     )}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-2xl shrink-0">{emojiFor(opt)}</span>
+                      <span className="text-2xl shrink-0">{emojiFor(opt, avatarOverrides)}</span>
                       <span className="font-semibold truncate">{opt}</span>
                     </div>
                     {isCorrect ? (
@@ -356,6 +363,7 @@ export function GamePlay({
                       : "bg-stage/60 text-foreground/80 border border-border",
                   )}
                 >
+                  <span className="text-base">{avatarFor(p.name, avatarOverrides)}</span>
                   <span>{p.name}</span>
                   <span className="text-cream/50 font-mono">{p.score}</span>
                 </div>
@@ -379,11 +387,13 @@ function WhoSaidItPicker({
   myAnswer,
   disabled,
   onPick,
+  avatarOverrides,
 }: {
   options: string[];
   myAnswer: Answer | null;
   disabled: boolean;
   onPick: (idx: number) => void | Promise<void>;
+  avatarOverrides: Record<string, string>;
 }) {
   const [selected, setSelected] = useState<string>(
     myAnswer ? String(myAnswer.selected_option_index) : "",
@@ -430,7 +440,7 @@ function WhoSaidItPicker({
           </option>
           {options.map((name, idx) => (
             <option key={idx} value={idx}>
-              {emojiFor(name)}  {name}
+              {emojiFor(name, avatarOverrides)}  {name}
             </option>
           ))}
         </select>
@@ -445,7 +455,7 @@ function WhoSaidItPicker({
           animate={{ opacity: 1, y: 0 }}
           className="mt-3 flex items-center justify-center gap-2 text-cream/80"
         >
-          <span className="text-2xl">{emojiFor(selectedName)}</span>
+          <span className="text-2xl">{emojiFor(selectedName, avatarOverrides)}</span>
           <span className="text-base">
             You picked <span className="font-bold text-cyan">{selectedName}</span>
           </span>

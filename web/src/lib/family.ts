@@ -88,3 +88,18 @@ export const SURNAMES: { letter: string; name: string; color: string }[] = [
 export function getFamilyMember(name: string): FamilyMember | undefined {
   return FAMILY.find((m) => m.fullName.toLowerCase() === name.toLowerCase());
 }
+/**
+ * Resolve the avatar emoji for a full name.
+ * Prefers the user-supplied override (Profile.avatar_emoji), falls back to
+ * the roster default. Returns "" only if both are absent (e.g. an unknown
+ * "Custom name…") — callers should render "" as nothing.
+ */
+export function avatarFor(
+  fullName: string,
+  overrides?: Record<string, string | null | undefined>,
+): string {
+  const fromOverride = overrides?.[fullName];
+  if (fromOverride) return fromOverride;
+  const m = FAMILY.find((f) => f.fullName === fullName);
+  return m?.emoji ?? "";
+}
