@@ -141,6 +141,7 @@ export default function App() {
     let cancelled = false;
 
     (async () => {
+      // Always fetch game + players first.
       const [{ data: g }, { data: ps }] = await Promise.all([
         supabase.from("games").select("*").eq("id", session.gameId).maybeSingle(),
         supabase.from("players").select("*").eq("game_id", session.gameId),
@@ -158,7 +159,28 @@ export default function App() {
       setGame(g);
       setPlayers((ps ?? []) as Player[]);
 
-      // Restore facts for ALL my players
+      // CRITICAL: if the game is mid-play or finished, late joiners need
+      // to fetch the existing questions + answers. Realtime only delivers
+      // NEW events — it doesn't replay history — so without this, anyone
+      // who joins after the host hit Start gets stuck on "Loading…" forever.
+      if (g.status !== "lobby") {
+        const [{ data: qs }, { data: ans }] = await Promise.all([
+          supabase
+            .from("questions")
+            .select("*")
+            .eq("game_id", session.gameId)
+            .order("question_index"),
+          supabase
+            .from("answers")
+            .select("*")
+            .eq("game_id", session.gameId),
+        ]);
+        if (!cancelled && qs) setQuestions(qs as Question[]);
+        if (!cancelled && ans) setAnswers(ans as Answer[]);
+      }
+
+      // Restore facts for ALL my players (so the lobby fact form prefills
+      // even if we're resuming mid-game).
       const myRows = (ps ?? []).filter((p: Player) => p.client_id === clientIdRef.current);
       if (myRows.length > 0) {
         const ids = myRows.map((p) => p.id);
@@ -174,14 +196,10 @@ export default function App() {
           }
           setFactsByPlayer(map);
         }
-        const { data: ans } = await supabase
-          .from("answers")
-          .select("*")
-          .eq("game_id", session.gameId);
-        if (!cancelled && ans) setAnswers(ans as Answer[]);
       }
 
-      // Phase from status
+      // Phase from status — set AFTER questions are loaded so the renderer
+      // can find currentQuestion immediately.
       if (g.status === "lobby") setPhase("lobby");
       else if (g.status === "playing") setPhase("playing");
       else if (g.status === "finished") setPhase("finished");
