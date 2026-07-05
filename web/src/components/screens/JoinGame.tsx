@@ -76,7 +76,7 @@ export function JoinGame({ onSubmit, onBack, initialCode = "" }: JoinGameProps) 
                 loading={loading}
                 disabled={!code.trim() || !name.trim()}
               >
-                Join Game 🎮
+                Join Game
               </Button>
               <button
                 type="button"

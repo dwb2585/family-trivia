@@ -129,7 +129,7 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
 
         <Card className="mb-4">
           <CardHeader>
-            <CardTitle>👤 My Profile</CardTitle>
+            <CardTitle>My Profile</CardTitle>
             <p className="text-foreground/60 text-sm mt-1">
               Update your answers anytime. They auto-fill in your next game.
             </p>
@@ -155,7 +155,7 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-lg">Default Questions</CardTitle>
                     <span className="text-xs text-cream/50">
-                      {saving ? "💾 Saving…" : Object.values(defaultFacts).some((v) => v.trim()) ? "✓ Saved" : ""}
+                      {saving ? "Saving…" : Object.values(defaultFacts).some((v) => v.trim()) ? "✓ Saved" : ""}
                     </span>
                   </div>
                 </CardHeader>
@@ -215,7 +215,7 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
                       onClick={() => setAddingCustom(true)}
                       className="w-full py-3 rounded-xl border-2 border-dashed border-gold/30 text-gold/70 hover:text-cyan hover:border-cyan transition-colors font-semibold"
                     >
-                      + Add a custom question
+                      Add a custom question
                     </button>
                   )}
                 </CardBody>
@@ -324,7 +324,7 @@ function CustomFactCard({
             aria-label="Delete"
             className="w-8 h-8 rounded-lg bg-stage/60 hover:bg-danger/20 text-cream/70 hover:text-danger flex items-center justify-center transition-colors"
           >
-            🗑
+            
           </button>
         </div>
       </div>

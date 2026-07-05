@@ -64,7 +64,7 @@ export function CreateGame({ onSubmit, onBack }: CreateGameProps) {
                 loading={loading}
                 disabled={!name.trim()}
               >
-                Create Game 🎤
+                Create Game
               </Button>
               <button
                 type="button"

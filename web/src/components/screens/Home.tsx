@@ -35,13 +35,13 @@ export function Home({ onHost, onJoin, onProfile, hasStoredGame, onResume }: Hom
         {/* CTAs — visible immediately, gentle fade-in once title settles */}
         <div className="w-full space-y-3 mt-8">
           <Button onClick={onHost} size="xl" fullWidth variant="gold" shimmer>
-            🎤 Host a Game
+            Host a Game
           </Button>
           <Button onClick={onJoin} size="xl" fullWidth variant="primary" shimmer>
-            🎮 Join a Game
+            Join a Game
           </Button>
           <Button onClick={onProfile} variant="ghost" size="md" fullWidth>
-            👤 Edit My Profile
+            Edit My Profile
           </Button>
 
           {hasStoredGame && onResume ? (

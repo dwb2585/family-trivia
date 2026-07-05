@@ -92,7 +92,7 @@ export function FamilyMemberSelect({
           {extraOption ? (
             <option value={extraOption.value}>{extraOption.label}</option>
           ) : null}
-          {allowCustom ? <option value="__custom__">✏️  Custom name…</option> : null}
+          {allowCustom ? <option value="__custom__">Custom name…</option> : null}
         </select>
 
         {/* Chevron */}
@@ -132,7 +132,7 @@ export function FamilyMemberSelect({
             }}
             className="px-4 h-12 rounded-xl bg-cyan text-stage font-bold"
           >
-            ✓
+            OK
           </button>
           <button
             type="button"
@@ -142,7 +142,7 @@ export function FamilyMemberSelect({
             }}
             className="px-3 h-12 rounded-xl bg-stage/60 text-foreground/70 border border-border"
           >
-            ✕
+            X
           </button>
         </div>
       ) : null}

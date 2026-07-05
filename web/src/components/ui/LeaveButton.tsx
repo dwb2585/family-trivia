@@ -66,7 +66,7 @@ export function LeaveButton({
               </p>
               {warning ? (
                 <p className="text-danger text-sm text-center mb-5 font-semibold">
-                  ⚠ {warning}
+                  {warning}
                 </p>
               ) : (
                 <div className="mb-5" />

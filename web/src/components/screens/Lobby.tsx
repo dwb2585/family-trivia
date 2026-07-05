@@ -145,7 +145,7 @@ export function Lobby({
               {code}
             </span>
             <span className="text-xs text-cream/40 group-hover:text-cyan uppercase tracking-[0.18em] mt-1 transition-colors">
-              📋 tap to copy
+              tap to copy
             </span>
           </button>
         </motion.div>
@@ -177,7 +177,7 @@ export function Lobby({
                   )}
                 >
                   {p.name}
-                  {p.ready ? " ✓" : ""}
+                  {p.ready ? "" : ""}
                 </button>
               ))}
               <button
@@ -246,13 +246,13 @@ export function Lobby({
                         )}
                         style={{ color: p.is_host ? "hsl(var(--gold))" : "hsl(var(--cyan))" }}
                       />
-                      {p.is_host ? "🎤" : "🎮"} {p.name}
+                      {p.is_host ? "Host " : ""}{p.name}
                       {isMine && myPlayers.length > 1 ? (
                         <span className="text-cream/40 text-xs">(on your device)</span>
                       ) : null}
                     </span>
                     <Badge variant={p.ready ? "success" : "default"}>
-                      {p.ready ? "✓ ready" : "…"}
+                      {p.ready ? "ready" : "waiting"}
                     </Badge>
                   </li>
                 );
@@ -280,7 +280,7 @@ export function Lobby({
                   {activePlayer?.ready
                     ? `${activeEnteredCount} fact${activeEnteredCount === 1 ? "" : "s"} in the pool.`
                     : prefilledFromProfile
-                    ? "✨ Loaded from your saved profile — edit if anything's changed."
+                    ? "Loaded from your saved profile — edit if anything's changed."
                     : "Fill in as many or as few as you want. Skip what doesn't fit. Specific = funnier."}
                 </p>
               </CardHeader>
@@ -299,7 +299,7 @@ export function Lobby({
                   {customFacts.length > 0 ? (
                     <div className="pt-2 mt-2 border-t border-border/50">
                       <p className="text-[10px] uppercase tracking-[0.18em] text-cream/40 font-bold mb-2">
-                        ✨ Your custom questions
+                        Your custom questions
                       </p>
                       {customFacts.map((cf) => (
                         <FactField
@@ -308,7 +308,7 @@ export function Lobby({
                             key: cf.id,
                             label: cf.label,
                             prompt: cf.prompt,
-                            emoji: "✨",
+                            emoji: "",
                           }}
                           value={facts[cf.id] || ""}
                           onChange={(v) => onFactChange(cf.id, v)}
@@ -324,7 +324,7 @@ export function Lobby({
                       onClick={onOpenProfile}
                       className="block w-full text-center text-sm text-cream/50 hover:text-cyan underline underline-offset-4 pt-2 transition-colors"
                     >
-                      ✏️ Add or edit custom questions in your profile
+                      Add or edit custom questions in your profile
                     </button>
                   ) : null}
                 </div>
@@ -348,7 +348,7 @@ export function Lobby({
               >
                 {!canMarkReady
                   ? `Enter at least 1 fact to start (${totalFactsEntered} so far)`
-                  : `✓ Submit & Ready (${totalFactsEntered} fact${totalFactsEntered === 1 ? "" : "s"})`}
+                  : `Submit & Ready (${totalFactsEntered} fact${totalFactsEntered === 1 ? "" : "s"})`}
               </Button>
             ) : (
               <Button
@@ -364,7 +364,7 @@ export function Lobby({
                   ? "Waiting for players…"
                   : !everyoneReady
                   ? `Start anyway (${players.filter((p) => p.ready).length}/${players.length} ready)`
-                  : "🎬 Start Game"}
+                  : "Start Game"}
               </Button>
             )
           ) : (
@@ -378,10 +378,10 @@ export function Lobby({
               disabled={!canMarkReady || allMyReady}
             >
               {allMyReady
-                ? "✓ You're ready — waiting for host"
+                ? "You're ready — waiting for host"
                 : !canMarkReady
                 ? `Enter at least 1 fact (${totalFactsEntered} so far)`
-                : `✓ Submit & Ready (${totalFactsEntered} fact${totalFactsEntered === 1 ? "" : "s"})`}
+                : `Submit & Ready (${totalFactsEntered} fact${totalFactsEntered === 1 ? "" : "s"})`}
             </Button>
           )}
         </div>

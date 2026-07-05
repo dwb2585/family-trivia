@@ -29,7 +29,7 @@ interface GamePlayProps {
 
 /** Emoji avatar for a family member's full name. Falls back to a generic dot. */
 function emojiFor(fullName: string): string {
-  return FAMILY.find((m) => m.fullName === fullName)?.emoji ?? "👤";
+  return FAMILY.find((m) => m.fullName === fullName)?.emoji ?? "";
 }
 
 export function GamePlay({
@@ -100,13 +100,13 @@ export function GamePlay({
             Question {questionIndex + 1} / {totalQuestions}
           </Badge>
           <div className="flex items-center gap-2">
-            {isWhoSaidIt ? <Badge variant="violet">🎯 Who said it?</Badge> : null}
+            {isWhoSaidIt ? <Badge variant="violet">Who said it?</Badge> : null}
             {!showResults ? (
               <Badge variant={countdown <= 5 ? "danger" : "cyan"}>
-                ⏱ {countdown}s
+                 {countdown}s
               </Badge>
             ) : (
-              <Badge variant="success">✓ Revealed</Badge>
+              <Badge variant="success">Revealed</Badge>
             )}
           </div>
         </div>
@@ -189,7 +189,7 @@ export function GamePlay({
                 {isMyQuestion && !isWhoSaidIt ? (
                   <div className="mt-4 px-4 py-3 rounded-xl bg-gold/10 border border-gold/40 text-center">
                     <p className="text-gold font-semibold text-sm">
-                      🎤 This one's about you! Share your answer out loud.
+                      This one's about you. Share your answer out loud.
                     </p>
                   </div>
                 ) : null}
@@ -197,7 +197,7 @@ export function GamePlay({
                 {isWhoSaidIt && isMyQuestion ? (
                   <div className="mt-4 px-4 py-3 rounded-xl bg-gold/10 border border-gold/40 text-center">
                     <p className="text-gold font-semibold text-sm">
-                      🎤 This fact is yours! Everyone else is guessing.
+                      This fact is yours. Everyone else is guessing.
                     </p>
                   </div>
                 ) : null}
@@ -285,7 +285,7 @@ export function GamePlay({
                       <span className="font-semibold truncate">{opt}</span>
                     </div>
                     {isCorrect ? (
-                      <span className="text-xl shrink-0 text-success neon-pulse" style={{ color: "hsl(var(--success))" }}>✓</span>
+                      <span className="text-xs shrink-0 text-success font-display tracking-widest">CORRECT</span>
                     ) : null}
                     {pickers.length > 0 && !isCorrect ? (
                       <span className="text-xs text-foreground/60 shrink-0">
@@ -312,7 +312,7 @@ export function GamePlay({
                   shimmer
                   disabled={answeredCount === 0}
                 >
-                  👁 Reveal Answer ({answeredCount}/{totalPlayers})
+                  Reveal Answer ({answeredCount}/{totalPlayers})
                 </Button>
               ) : questionIndex + 1 < totalQuestions ? (
                 <Button onClick={onNext} size="lg" fullWidth variant="primary" shimmer>
@@ -320,19 +320,19 @@ export function GamePlay({
                 </Button>
               ) : (
                 <Button onClick={onNext} size="lg" fullWidth variant="gold" shimmer>
-                  🏁 Show Final Results
+                  Show Final Results
                 </Button>
               )}
             </div>
           ) : (
             <div className="text-center text-cream/60 text-sm py-3">
               {!myAnswer && !showResults && !isMyQuestion
-                ? "Pick an answer above!"
+                ? "Pick an answer above."
                 : isMyQuestion
                 ? "Listening to the answer…"
                 : showResults
                 ? "Waiting for next question…"
-                : "✓ Answer locked in"}
+                : "Answer locked in"}
             </div>
           )}
         </div>

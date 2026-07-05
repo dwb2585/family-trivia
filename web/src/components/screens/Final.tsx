@@ -19,7 +19,7 @@ function familyMeta(name: string): { letter: string; color: string; emoji: strin
   const m = FAMILY.find((f) => f.fullName === name);
   return m
     ? { letter: m.letter, color: m.color, emoji: m.emoji }
-    : { letter: name[0]?.toUpperCase() ?? "?", color: "hsl(var(--cyan))", emoji: "👤" };
+    : { letter: name[0]?.toUpperCase() ?? "?", color: "hsl(var(--cyan))", emoji: "" };
 }
 
 export function Final({ players, onPlayAgain, onLeave }: FinalProps) {
@@ -98,7 +98,7 @@ export function Final({ players, onPlayAgain, onLeave }: FinalProps) {
               {winner ? `${winner.name}` : "Tie!"}
             </h1>
             <p className="text-cream/70 text-base mt-2">
-              {winner ? "takes the trophy 🏆" : ""}
+              {winner ? "takes the win " : ""}
             </p>
           </motion.div>
         </div>
@@ -136,7 +136,7 @@ export function Final({ players, onPlayAgain, onLeave }: FinalProps) {
                           isPodium ? "text-foreground" : "text-cream/50",
                         )}
                       >
-                        {isFirst ? "🥇" : isPodium ? (i === 1 ? "🥈" : "🥉") : i + 1}
+                        {isFirst ? "1" : isPodium ? (i === 1 ? "2" : "3") : i + 1}
                       </span>
                       <span
                         className="w-7 h-7 rounded-md flex items-center justify-center text-sm font-bold text-stage shrink-0"
@@ -166,7 +166,7 @@ export function Final({ players, onPlayAgain, onLeave }: FinalProps) {
 
         <div className="mt-6 space-y-2">
           <Button onClick={onPlayAgain} size="lg" fullWidth variant="gold" shimmer>
-            🎬 New Game
+            New Game
           </Button>
           <Button onClick={onLeave} variant="ghost" size="md" fullWidth>
             Leave
