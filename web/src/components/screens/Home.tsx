@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/Button";
 import { Marquee } from "@/components/ui/Marquee";
+import { TitleIntro } from "@/components/TitleIntro";
 
 interface HomeProps {
   onHost: () => void;
@@ -11,27 +12,22 @@ interface HomeProps {
 export function Home({ onHost, onJoin, hasStoredGame, onResume }: HomeProps) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-between px-5 py-8 stage-scanlines relative overflow-hidden">
-      {/* Spotlight backdrop */}
+      {/* Spotlight + velvet backdrop */}
       <div className="absolute inset-0 bg-stage-radial pointer-events-none" />
       <div className="absolute inset-0 bg-stage-velvet pointer-events-none opacity-80" />
 
       <div className="relative z-10 w-full flex flex-col items-center flex-1 justify-center max-w-md">
         {/* Top marquee */}
-        <Marquee className="mb-8 max-w-xs" />
+        <Marquee className="mb-6 max-w-xs" />
 
-        {/* Title */}
-        <div className="text-center mb-10 animate-fade-in-up">
-          <h1 className="font-display text-5xl sm:text-6xl text-gold leading-none mb-3"
-              style={{ textShadow: "0 0 30px hsl(var(--gold-glow) / 0.4), 0 4px 0 hsl(var(--velvet))" }}>
-            FAMILY<br />TRIVIA<br />NIGHT
-          </h1>
-          <p className="text-cream/60 text-sm uppercase tracking-[0.3em] mt-4">
-            The Game Show
-          </p>
-        </div>
+        {/* Theatrical CWABS title — letters crash in, names fade below */}
+        <TitleIntro />
 
-        {/* CTAs */}
-        <div className="w-full space-y-3 animate-fade-in-up" style={{ animationDelay: "0.15s" }}>
+        {/* CTAs — fade in after the title sequence finishes */}
+        <div
+          className="w-full space-y-3 mt-8 animate-fade-in-up"
+          style={{ animationDelay: "2.5s", opacity: 0 }}
+        >
           <Button onClick={onHost} size="xl" fullWidth>
             🎤 Host a Game
           </Button>
