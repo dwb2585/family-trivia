@@ -32,15 +32,8 @@ export function Home({ onHost, onJoin, onProfile, hasStoredGame, onResume }: Hom
         {/* Theatrical CWABS title */}
         <TitleIntro />
 
-        {/* CTAs — fade in after title sequence */}
-        <div
-          className="w-full space-y-3 mt-8"
-          style={{
-            opacity: 0,
-            animation: "fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards",
-            animationDelay: "1.4s",
-          }}
-        >
+        {/* CTAs — visible immediately, gentle fade-in once title settles */}
+        <div className="w-full space-y-3 mt-8">
           <Button onClick={onHost} size="xl" fullWidth variant="gold" shimmer>
             🎤 Host a Game
           </Button>
@@ -65,7 +58,9 @@ export function Home({ onHost, onJoin, onProfile, hasStoredGame, onResume }: Hom
       </div>
 
       <footer className="relative z-10 text-cream/40 text-[10px] uppercase tracking-[0.3em] mt-6">
-        Made for family game nights
+        A Dan
+        <span className="text-cyan text-[8px] align-super font-bold">2</span>
+        {" "}production
       </footer>
     </div>
   );
