@@ -1,5 +1,5 @@
 import type { Player, PlayerFact, Question } from "./supabase";
-import { DEFAULT_FACTS, QUESTIONS_PER_FACT, buildQuestionText } from "./facts";
+import { DEFAULT_FACTS, QUESTIONS_PER_FACT, buildQuestionText, pickDistractors } from "./facts";
 import { shuffle } from "./utils";
 
 export interface GenerateInput {
@@ -80,30 +80,14 @@ export function generateQuestions({ gameId, players, facts }: GenerateInput): Om
           points: 100,
         });
       } else {
-        // Distractors = same fact_key from OTHER players
-        const distractors: string[] = [];
-        const otherFacts = facts.filter(
-          (f) => f.fact_key === fact.fact_key && f.player_id !== subject.id,
-        );
-        for (const f of shuffle(otherFacts)) {
-          if (distractors.length >= 3) break;
-          if (!distractors.includes(f.fact_value)) {
-            distractors.push(f.fact_value);
-          }
-        }
-        // Pad with subject's other facts if not enough distractors
-        let padIdx = 0;
-        while (distractors.length < 3 && subjectFacts.length > 0) {
-          const candidate = subjectFacts[padIdx % subjectFacts.length];
-          padIdx++;
-          if (
-            candidate.fact_value !== fact.fact_value &&
-            !distractors.includes(candidate.fact_value)
-          ) {
-            distractors.push(candidate.fact_value);
-          }
-          if (padIdx > 20) break; // safety
-        }
+        // Same-category distractors: real movies for movie questions,
+        // real places for vacation questions, etc. Never crosses categories
+        // into the subject's other facts (which used to give nonsense
+        // like "Popcorn" as a distractor for "favorite movie").
+        const otherPlayersSameKey = facts
+          .filter((f) => f.fact_key === fact.fact_key && f.player_id !== subject.id)
+          .map((f) => f.fact_value);
+        const distractors = pickDistractors(fact.fact_value, fact.fact_key, otherPlayersSameKey);
 
         const options = shuffle([fact.fact_value, ...distractors]);
         const correctIndex = options.indexOf(fact.fact_value);
