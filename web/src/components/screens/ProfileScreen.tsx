@@ -421,9 +421,12 @@ function QuestionBankRow({
         <button
           onClick={onDeleteQuestion}
           aria-label="Delete question"
+          title="Delete question"
           className="shrink-0 w-8 h-8 rounded-lg bg-stage/60 hover:bg-danger/20 text-cream/70 hover:text-danger flex items-center justify-center transition-colors"
         >
-          
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 4h10M6.5 4V2.5h3V4M5 4l.5 9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1L11 4" />
+          </svg>
         </button>
       </div>
 
@@ -447,9 +450,12 @@ function QuestionBankRow({
                 <button
                   onClick={() => onDeleteAnswer(a.id)}
                   aria-label="Delete answer"
-                  className="shrink-0 w-7 h-7 rounded-md bg-stage/60 hover:bg-danger/20 text-cream/60 hover:text-danger flex items-center justify-center text-xs"
+                  title="Delete answer"
+                  className="shrink-0 w-7 h-7 rounded-md bg-stage/60 hover:bg-danger/20 text-cream/60 hover:text-danger flex items-center justify-center"
                 >
-                  
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 4h10M6.5 4V2.5h3V4M5 4l.5 9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1L11 4" />
+                  </svg>
                 </button>
               </li>
             );
