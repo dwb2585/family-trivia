@@ -51,6 +51,7 @@ export function ProfileScreen({
   const [error, setError] = useState<string | null>(null);
   const [addingFact, setAddingFact] = useState(false);
   const [editingFactId, setEditingFactId] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   // Load profile when name changes. We pre-fill the answers from the
   // saved profile (cross-game persistence) and use the default-facts pool
@@ -248,11 +249,20 @@ export function ProfileScreen({
                             onSave={(patch) => handleUpdateFact(fact.id, patch)}
                             onCancel={() => setEditingFactId(null)}
                           />
+                        ) : pendingDeleteId === fact.id ? (
+                          <FactDeleteConfirm
+                            fact={fact}
+                            onCancel={() => setPendingDeleteId(null)}
+                            onConfirm={async () => {
+                              await handleDeleteFact(fact.id, fact.key);
+                              setPendingDeleteId(null);
+                            }}
+                          />
                         ) : (
                           <FactRow
                             fact={fact}
                             onEdit={() => setEditingFactId(fact.id)}
-                            onDelete={() => handleDeleteFact(fact.id, fact.key)}
+                            onDelete={() => setPendingDeleteId(fact.id)}
                           />
                         )}
                       </motion.div>
@@ -375,6 +385,61 @@ function FactRow({
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M3 4h10M6.5 4V2.5h3V4M5 4l.5 9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1L11 4" />
           </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Inline two-step delete confirmation. Tap trash -> this prompt appears
+ * in place of the row; tap "Yes, delete it" to actually delete, or
+ * "Cancel" to dismiss. Keeps the user on the same screen with no modal.
+ */
+function FactDeleteConfirm({
+  fact,
+  onCancel,
+  onConfirm,
+}: {
+  fact: DefaultFact;
+  onCancel: () => void;
+  onConfirm: () => Promise<void> | void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  async function handleConfirm() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onConfirm();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2 p-3 rounded-xl bg-danger/10 border border-danger/40">
+      <span className="text-xl shrink-0">{fact.emoji || "✨"}</span>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-bold text-danger">You sure about that?!</div>
+        <div className="text-xs text-cream/60 truncate">
+          Deleting <span className="text-cream/80">"{fact.prompt}"</span> clears every answer to it.
+        </div>
+      </div>
+      <div className="flex gap-2 shrink-0">
+        <button
+          onClick={onCancel}
+          disabled={busy}
+          className="h-9 px-3 rounded-lg bg-stage/60 text-cream/70 hover:text-foreground text-sm font-semibold disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleConfirm}
+          disabled={busy}
+          className="h-9 px-3 rounded-lg bg-gradient-to-br from-red to-[hsl(355,95%,55%)] text-cream text-sm font-bold transition-all disabled:opacity-50"
+        >
+          {busy ? "Deleting…" : "Yes, delete it"}
         </button>
       </div>
     </div>
