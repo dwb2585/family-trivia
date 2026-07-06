@@ -3,7 +3,7 @@ import { supabase, type Game, type Player, type Question, type Answer } from "@/
 import { uuid, randomCode } from "@/lib/utils";
 import { generateQuestions, scoreAnswer } from "@/lib/gameLogic";
 import { getProfile, upsertProfile, getProfilesForNames } from "@/lib/profiles";
-import { getCustomQuestionsForGame } from "@/lib/customQuestions";
+import { getSharedQuestionsWithAnswers } from "@/lib/sharedQuestions";
 
 import { Home } from "@/components/screens/Home";
 import { CreateGame } from "@/components/screens/CreateGame";
@@ -249,7 +249,8 @@ export default function App() {
 
       // Prefill facts from the player's saved profile, if one exists.
       // This is how returning players don't have to re-type all 8 facts.
-      // (Custom questions are now a shared pool — see customQuestions.ts —
+      // (Shared Q&A is fetched separately at game-start time — see
+      // sharedQuestions.ts — and doesn't need to be prefilled here.)
       // and don't need to be prefilled into the per-player facts map.)
       const profile = await getProfile(name);
       if (profile) {
@@ -389,16 +390,18 @@ export default function App() {
       .select("*")
       .in("player_id", ids);
 
-    // Pull shared custom questions whose subject is playing this game.
-    // They're rendered as who-said-it rounds by the generator.
-    const playerNames = (playersAll ?? []).map((p: Player) => p.name);
-    const sharedCustomQuestions = await getCustomQuestionsForGame(playerNames);
+    // Pull the shared community Q&A bank. The generator filters to
+    // (question, answer) pairs whose answerer is in this game.
+    const shared = await getSharedQuestionsWithAnswers();
+    const sharedQuestions = shared.map(({ answers: _answers, ...q }) => q);
+    const sharedAnswers = shared.flatMap((q) => q.answers);
 
     const generated = generateQuestions({
       gameId: game.id,
       players: (playersAll ?? []) as Player[],
       facts: (factsAll ?? []) as { id: string; player_id: string; fact_key: string; fact_value: string }[],
-      sharedCustomQuestions,
+      sharedQuestions,
+      sharedAnswers,
     });
 
     if (generated.length === 0) {

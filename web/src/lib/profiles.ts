@@ -47,12 +47,8 @@ export async function upsertProfile(
 }
 
 // ============================================================================
-// Custom questions
+// Shared Q&A bank lives in `web/src/lib/sharedQuestions.ts`
 // ============================================================================
-// Custom questions were moved from a per-player `profile_custom_facts` model
-// to a shared `custom_questions` pool (migration 0006). Anyone can write into
-// it (about anyone in the family) and anyone can delete. See
-// `web/src/lib/customQuestions.ts` for the CRUD helpers.
 
 // ============================================================================
 // Profile avatar

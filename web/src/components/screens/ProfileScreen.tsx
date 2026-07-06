@@ -7,19 +7,26 @@ import { LeaveButton } from "@/components/ui/LeaveButton";
 import { FamilyMemberSelect } from "@/components/ui/Select";
 import { FAMILY } from "@/lib/family";
 import { DEFAULT_FACTS } from "@/lib/facts";
-import type { CustomQuestion } from "@/lib/supabase";
+import type { SharedQuestion, SharedQuestionAnswer } from "@/lib/supabase";
 import {
   getProfile,
   upsertProfile,
   setProfileAvatar,
 } from "@/lib/profiles";
 import {
-  getCustomQuestions,
-  createCustomQuestion,
-  updateCustomQuestion,
-  deleteCustomQuestion,
-} from "@/lib/customQuestions";
+  getSharedQuestionsWithAnswers,
+  createSharedQuestion,
+  upsertSharedAnswer,
+  deleteSharedQuestion,
+  deleteSharedAnswer,
+} from "@/lib/sharedQuestions";
 import { cn } from "@/lib/utils";
+
+/** UI helper: question + the answers that have been collected for it. */
+interface QuestionWithAnswers {
+  question: SharedQuestion;
+  answers: SharedQuestionAnswer[];
+}
 
 /**
  * Avatar options shown in the picker. Curated, single-glyph emojis so they
@@ -40,53 +47,52 @@ interface ProfileScreenProps {
 
 /**
  * Profile editor — pick a name, then edit that person's default facts
- * (the 8 built-in keys) and avatar.
- *
- * The "Custom Questions" section below shows the SHARED pool — any player
- * can add a question about any subject in the family roster, and any
- * player can delete. Auto-saves default facts with a 600ms debounce.
+ * (the 8 built-in keys) and avatar. The page also shows the shared
+ * Question Bank: anyone can post a question, anyone can answer it
+ * (one answer per person — re-submitting upserts), anyone can delete
+ * either. Default facts auto-save with a 600ms debounce.
  */
 export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) {
   const [name, setName] = useState(initialName);
   const [defaultFacts, setDefaultFacts] = useState<Record<string, string>>({});
-  const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>([]);
+  const [bank, setBank] = useState<QuestionWithAnswers[]>([]);
   const [avatarEmoji, setAvatarEmoji] = useState<string | null>(null);
   // When avatarEmoji is null we fall back to the family roster default.
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [addingCustom, setAddingCustom] = useState(false);
+  const [postingQuestion, setPostingQuestion] = useState(false);
 
-  // Load profile + shared custom questions when name changes
+  // Load profile + shared question bank. The bank is global; the profile
+  // is per-name. They load in parallel.
   useEffect(() => {
-    if (!name.trim()) {
-      setDefaultFacts({});
-      setAvatarEmoji(null);
-      setLoading(false);
-      return;
-    }
     let cancelled = false;
     setLoading(true);
     setError(null);
     (async () => {
-      const [profile, customs] = await Promise.all([
-        getProfile(name),
-        // Pull the whole shared pool once — small table, no need to filter
-        // by subject here. The UI shows every question in the pool.
-        getCustomQuestions(),
+      const [, shared] = await Promise.all([
+        name.trim() ? getProfile(name) : Promise.resolve(null),
+        getSharedQuestionsWithAnswers(),
       ]);
       if (cancelled) return;
-      // Pre-fill with empty strings for all default keys so the form shows them
-      const blank: Record<string, string> = {};
-      for (const f of DEFAULT_FACTS) blank[f.key] = "";
-      if (profile) Object.assign(blank, profile.facts);
-      setDefaultFacts(blank);
-      setCustomQuestions(customs);
-      // 0/empty-string from DB → null (use roster default).
-      setAvatarEmoji(
-        profile && profile.avatar_emoji && profile.avatar_emoji.length > 0
-          ? profile.avatar_emoji
-          : null,
+      if (!name.trim()) {
+        setDefaultFacts({});
+        setAvatarEmoji(null);
+      } else {
+        const blank: Record<string, string> = {};
+        for (const f of DEFAULT_FACTS) blank[f.key] = "";
+        // shared here is the profile | null from the parallel call.
+        const profile = (await getProfile(name)) ?? null;
+        if (profile) Object.assign(blank, profile.facts);
+        setDefaultFacts(blank);
+        setAvatarEmoji(
+          profile && profile.avatar_emoji && profile.avatar_emoji.length > 0
+            ? profile.avatar_emoji
+            : null,
+        );
+      }
+      setBank(
+        shared.map((q) => ({ question: q, answers: q.answers })),
       );
       setLoading(false);
     })();
@@ -127,43 +133,71 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
     await setProfileAvatar(name, next ?? "");
   }
 
-  // ----- Shared custom question handlers -----
+  // ----- Shared Q&A handlers -----
 
-  async function handleAddCustom(
-    prompt: string,
-    label: string,
-    value: string,
-    subject: string,
-  ) {
-    if (!name.trim()) return;
-    const created = await createCustomQuestion({
-      prompt,
-      label,
-      value,
-      subject_full_name: subject,
-      created_by: name.trim(),
-    });
+  async function refreshBank() {
+    const shared = await getSharedQuestionsWithAnswers();
+    setBank(shared.map((q) => ({ question: q, answers: q.answers })));
+  }
+
+  async function handlePostQuestion(prompt: string) {
+    if (!name.trim()) {
+      setError("Pick a name above to post or answer questions");
+      return;
+    }
+    const created = await createSharedQuestion(prompt, name.trim());
     if (created) {
-      setCustomQuestions((prev) => [...prev, created]);
-      setAddingCustom(false);
+      setBank((prev) => [...prev, { question: created, answers: [] }]);
+      setPostingQuestion(false);
     } else {
-      setError("Could not add custom question");
+      setError("Could not post question");
     }
   }
 
-  async function handleUpdateCustom(
-    id: string,
-    patch: Partial<Pick<CustomQuestion, "prompt" | "label" | "value" | "subject_full_name">>,
-  ) {
-    setCustomQuestions((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...patch } : c)),
-    );
-    await updateCustomQuestion(id, patch);
+  async function handleAnswer(questionId: string, value: string) {
+    if (!name.trim()) {
+      setError("Pick a name above to post or answer questions");
+      return;
+    }
+    const saved = await upsertSharedAnswer(questionId, name.trim(), value);
+    if (saved) {
+      setBank((prev) =>
+        prev.map((row) => {
+          if (row.question.id !== questionId) return row;
+          const others = row.answers.filter((a) => a.submitted_by !== saved.submitted_by);
+          return { ...row, answers: [...others, saved] };
+        }),
+      );
+    } else if (value.trim()) {
+      setError("Could not save answer");
+    }
+    // If value was blank, the upsert helper deleted the existing row for us;
+    // we still need to refresh the visible state.
+    if (!value.trim()) {
+      setBank((prev) =>
+        prev.map((row) =>
+          row.question.id === questionId
+            ? { ...row, answers: row.answers.filter((a) => a.submitted_by !== name.trim()) }
+            : row,
+        ),
+      );
+    }
   }
 
-  async function handleDeleteCustom(id: string) {
-    setCustomQuestions((prev) => prev.filter((c) => c.id !== id));
-    await deleteCustomQuestion(id);
+  async function handleDeleteQuestion(id: string) {
+    setBank((prev) => prev.filter((row) => row.question.id !== id));
+    await deleteSharedQuestion(id);
+  }
+
+  async function handleDeleteAnswer(answerId: string, questionId: string) {
+    setBank((prev) =>
+      prev.map((row) =>
+        row.question.id === questionId
+          ? { ...row, answers: row.answers.filter((a) => a.id !== answerId) }
+          : row,
+      ),
+    );
+    await deleteSharedAnswer(answerId);
   }
 
   return (
@@ -239,51 +273,54 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
                 </CardBody>
               </Card>
 
-              {/* Shared custom question pool */}
+              {/* Question Bank — shared community Q&A */}
               <Card className="mb-4">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">Shared Custom Questions</CardTitle>
+                  <CardTitle className="text-lg">Question Bank</CardTitle>
                   <p className="text-foreground/60 text-xs mt-1">
-                    One pool, everyone plays with them. Add a question about anyone in the family roster — anyone can also delete.
+                    Anyone can post a question, answer one, or delete either. Your answers appear in every game.
                   </p>
                 </CardHeader>
                 <CardBody className="pt-2 space-y-3">
-                  {customQuestions.length === 0 && !addingCustom ? (
+                  {bank.length === 0 && !postingQuestion ? (
                     <p className="text-cream/50 text-sm text-center py-3">
-                      No custom questions in the pool yet.
+                      No questions yet. Post the first one below.
                     </p>
                   ) : null}
 
                   <AnimatePresence initial={false}>
-                    {customQuestions.map((c) => (
+                    {bank.map((row) => (
                       <motion.div
-                        key={c.id}
+                        key={row.question.id}
                         initial={{ opacity: 0, y: 6 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, x: -20, height: 0 }}
                         transition={{ duration: 0.18 }}
                       >
-                        <CustomQuestionCard
-                          question={c}
-                          onChange={(patch) => handleUpdateCustom(c.id, patch)}
-                          onDelete={() => handleDeleteCustom(c.id)}
+                        <QuestionBankRow
+                          row={row}
+                          currentName={name}
+                          onAnswer={(value) => handleAnswer(row.question.id, value)}
+                          onDeleteQuestion={() => handleDeleteQuestion(row.question.id)}
+                          onDeleteAnswer={(answerId) =>
+                            handleDeleteAnswer(answerId, row.question.id)
+                          }
                         />
                       </motion.div>
                     ))}
                   </AnimatePresence>
 
-                  {addingCustom ? (
-                    <NewCustomQuestionForm
-                      defaultSubject={name}
-                      onSubmit={handleAddCustom}
-                      onCancel={() => setAddingCustom(false)}
+                  {postingQuestion ? (
+                    <PostQuestionForm
+                      onSubmit={handlePostQuestion}
+                      onCancel={() => setPostingQuestion(false)}
                     />
                   ) : (
                     <button
-                      onClick={() => setAddingCustom(true)}
+                      onClick={() => setPostingQuestion(true)}
                       className="w-full py-3 rounded-xl border-2 border-dashed border-gold/30 text-gold/70 hover:text-cyan hover:border-cyan transition-colors font-semibold"
                     >
-                      Add a custom question
+                      Post a question
                     </button>
                   )}
                 </CardBody>
@@ -346,179 +383,157 @@ function DefaultFactField({
   );
 }
 
-function CustomQuestionCard({
-  question,
-  onChange,
-  onDelete,
+/**
+ * One row of the Question Bank — a question prompt + the answer list + a
+ * "your answer" inline editor. Anyone can delete the question or any answer.
+ */
+function QuestionBankRow({
+  row,
+  currentName,
+  onAnswer,
+  onDeleteQuestion,
+  onDeleteAnswer,
 }: {
-  question: CustomQuestion;
-  onChange: (patch: Partial<Pick<CustomQuestion, "prompt" | "label" | "value" | "subject_full_name">>) => void;
-  onDelete: () => void;
+  row: QuestionWithAnswers;
+  currentName: string;
+  onAnswer: (value: string) => void;
+  onDeleteQuestion: () => void;
+  onDeleteAnswer: (answerId: string) => void;
 }) {
+  const myExisting = row.answers.find((a) => a.submitted_by === currentName);
   const [editing, setEditing] = useState(false);
-  const [prompt, setPrompt] = useState(question.prompt);
-  const [label, setLabel] = useState(question.label);
-  const [value, setValue] = useState(question.value);
-  const [subject, setSubject] = useState(question.subject_full_name);
+  const [draft, setDraft] = useState(myExisting?.value ?? "");
 
-  // Sync local state when the row changes externally (e.g. realtime update)
+  // Sync draft when the actual answer row updates (e.g. another tab wrote it)
   useEffect(() => {
-    setPrompt(question.prompt);
-    setLabel(question.label);
-    setValue(question.value);
-    setSubject(question.subject_full_name);
-  }, [question.prompt, question.label, question.value, question.subject_full_name]);
-
-  if (!editing) {
-    const rosterEmoji = FAMILY.find((m) => m.fullName === question.subject_full_name)?.emoji ?? "👤";
-    return (
-      <div className="flex items-start gap-2 p-3 rounded-xl bg-stage/40 border border-gold/20">
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-foreground">{question.prompt}</div>
-          <div className="text-xs text-cream/50 mt-0.5">
-            About <span className="text-cream/70">{rosterEmoji} {question.subject_full_name}</span>
-            {" \u00b7 "}
-            added by <span className="text-cream/70">{question.created_by}</span>
-          </div>
-          <div className="text-sm text-gold mt-1">
-            {question.value || <span className="text-cream/50 italic">no answer yet</span>}
-          </div>
-        </div>
-        <div className="flex flex-col gap-1 shrink-0">
-          <button
-            onClick={() => setEditing(true)}
-            aria-label="Edit"
-            className="w-8 h-8 rounded-lg bg-stage/60 hover:bg-gold/20 text-cream/70 hover:text-gold flex items-center justify-center transition-colors"
-          >
-            ✏️
-          </button>
-          <button
-            onClick={onDelete}
-            aria-label="Delete"
-            className="w-8 h-8 rounded-lg bg-stage/60 hover:bg-danger/20 text-cream/70 hover:text-danger flex items-center justify-center transition-colors"
-          >
-            
-          </button>
-        </div>
-      </div>
-    );
-  }
+    if (!editing) setDraft(myExisting?.value ?? "");
+  }, [myExisting?.value, editing]);
 
   return (
-    <div className="p-3 rounded-xl bg-stage/60 border-2 border-gold/40 space-y-2">
-      <input
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Question (e.g. What's your favorite season?)"
-        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm focus:bg-stage"
-      />
-      <input
-        value={label}
-        onChange={(e) => setLabel(e.target.value)}
-        placeholder="Label (e.g. favorite season)"
-        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm focus:bg-stage"
-      />
-      <input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="The subject's answer"
-        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm focus:bg-stage"
-      />
-      <FamilyMemberSelect
-        label="About"
-        value={subject}
-        onChange={setSubject}
-        allowCustom
-      />
-      <div className="flex gap-2 justify-end">
+    <div className="p-3 rounded-xl bg-stage/40 border border-gold/20 space-y-2">
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-foreground">{row.question.prompt}</div>
+          <div className="text-xs text-cream/40 mt-0.5">
+            posted by {row.question.created_by}
+          </div>
+        </div>
         <button
-          onClick={() => {
-            setPrompt(question.prompt);
-            setLabel(question.label);
-            setValue(question.value);
-            setSubject(question.subject_full_name);
-            setEditing(false);
-          }}
-          className="px-3 h-9 rounded-lg bg-stage text-cream/70 hover:text-foreground text-sm font-semibold"
+          onClick={onDeleteQuestion}
+          aria-label="Delete question"
+          className="shrink-0 w-8 h-8 rounded-lg bg-stage/60 hover:bg-danger/20 text-cream/70 hover:text-danger flex items-center justify-center transition-colors"
         >
-          Cancel
-        </button>
-        <button
-          onClick={() => {
-            onChange({ prompt, label, value, subject_full_name: subject });
-            setEditing(false);
-          }}
-          disabled={!prompt.trim() || !label.trim() || !subject.trim()}
-          className="px-3 h-9 rounded-lg bg-gradient-to-br from-cyan to-violet text-stage text-sm font-bold shadow-cyan-glow-sm disabled:opacity-50"
-        >
-          Save
+          
         </button>
       </div>
+
+      {/* Answers */}
+      {row.answers.length > 0 ? (
+        <ul className="space-y-1">
+          {row.answers.map((a) => {
+            const isMine = a.submitted_by === currentName;
+            const emoji = FAMILY.find((m) => m.fullName === a.submitted_by)?.emoji ?? "👤";
+            return (
+              <li
+                key={a.id}
+                className={cn(
+                  "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm",
+                  isMine ? "bg-cyan/10 border border-cyan/30" : "bg-stage/30",
+                )}
+              >
+                <span className="text-base">{emoji}</span>
+                <span className="text-gold font-semibold flex-1 truncate">{a.value}</span>
+                <span className="text-xs text-cream/50 shrink-0">{a.submitted_by}</span>
+                <button
+                  onClick={() => onDeleteAnswer(a.id)}
+                  aria-label="Delete answer"
+                  className="shrink-0 w-7 h-7 rounded-md bg-stage/60 hover:bg-danger/20 text-cream/60 hover:text-danger flex items-center justify-center text-xs"
+                >
+                  
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="text-cream/40 text-xs italic px-2">no answers yet</p>
+      )}
+
+      {/* Your answer — inline editor */}
+      {currentName.trim() ? (
+        <div className="flex items-center gap-2 pt-1">
+          <input
+            value={editing ? draft : myExisting?.value ?? ""}
+            placeholder={`${currentName}'s answer`}
+            disabled={!editing}
+            onChange={(e) => setDraft(e.target.value)}
+            className={cn(
+              "flex-1 h-9 px-3 rounded-lg text-sm",
+              "bg-stage border border-border",
+              "text-foreground placeholder:text-cream/40",
+              "focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm",
+              !editing && "opacity-80 cursor-default",
+            )}
+          />
+          {editing ? (
+            <>
+              <button
+                onClick={() => {
+                  setDraft(myExisting?.value ?? "");
+                  setEditing(false);
+                }}
+                className="h-9 px-3 rounded-lg bg-stage text-cream/70 hover:text-foreground text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  onAnswer(draft);
+                  setEditing(false);
+                }}
+                className="h-9 px-3 rounded-lg bg-gradient-to-br from-cyan to-violet text-stage text-xs font-bold shadow-cyan-glow-sm"
+              >
+                Save
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => {
+                setDraft(myExisting?.value ?? "");
+                setEditing(true);
+              }}
+              className="h-9 px-3 rounded-lg bg-stage/60 hover:bg-cyan/20 text-cream/70 hover:text-cyan text-xs font-bold"
+            >
+              {myExisting ? "Edit" : "Answer"}
+            </button>
+          )}
+        </div>
+      ) : (
+        <p className="text-cream/40 text-xs italic px-2">pick a name above to answer</p>
+      )}
     </div>
   );
 }
 
-function NewCustomQuestionForm({
-  defaultSubject,
+/** Minimal post-a-question form: just a prompt and a submit button. */
+function PostQuestionForm({
   onSubmit,
   onCancel,
 }: {
-  defaultSubject: string;
-  onSubmit: (prompt: string, label: string, value: string, subject: string) => void;
+  onSubmit: (prompt: string) => void;
   onCancel: () => void;
 }) {
-  const [prompt, setPrompt] = useState("");
-  const [label, setLabel] = useState("");
-  const [value, setValue] = useState("");
-  const [subject, setSubject] = useState(defaultSubject);
-
-  function deriveLabel(p: string): string {
-    // Tiny heuristic: strip "What's your / Where's your / Who" prefixes
-    return p
-      .replace(/^what'?s your\s+/i, "")
-      .replace(/^where'?s your\s+/i, "")
-      .replace(/^who'?s your\s+/i, "")
-      .replace(/^what'?s\s+/i, "")
-      .replace(/^where'?s\s+/i, "")
-      .replace(/\?$/, "")
-      .trim()
-      .toLowerCase()
-      .slice(0, 60);
-  }
+  const [draft, setDraft] = useState("");
 
   return (
     <div className="p-3 rounded-xl bg-card border-2 border-gold/40 space-y-2">
       <input
         autoFocus
-        value={prompt}
-        onChange={(e) => {
-          setPrompt(e.target.value);
-          if (!label) setLabel(deriveLabel(e.target.value));
-        }}
-        placeholder="Question (e.g. What's your favorite season?)"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder="Question (e.g. What's your favorite color?)"
         className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm focus:bg-stage"
       />
-      <input
-        value={label}
-        onChange={(e) => setLabel(e.target.value)}
-        placeholder="Label (e.g. favorite season) — used in question templates"
-        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm focus:bg-stage"
-      />
-      <input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="The answer (e.g. Autumn)"
-        className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm focus:bg-stage"
-      />
-      <FamilyMemberSelect
-        label="About"
-        value={subject}
-        onChange={setSubject}
-        allowCustom
-      />
-      <p className="text-[10px] uppercase tracking-[0.18em] text-cream/40 font-bold">
-        You'll be listed as the author: <span className="text-cream/70">{defaultSubject}</span>
-      </p>
       <div className="flex gap-2 justify-end">
         <button
           onClick={onCancel}
@@ -527,11 +542,11 @@ function NewCustomQuestionForm({
           Cancel
         </button>
         <button
-          onClick={() => onSubmit(prompt, label, value, subject)}
-          disabled={!prompt.trim() || !label.trim() || !subject.trim()}
+          onClick={() => onSubmit(draft)}
+          disabled={!draft.trim()}
           className="px-3 h-9 rounded-lg bg-gradient-to-br from-cyan to-violet text-stage text-sm font-bold shadow-cyan-glow-sm disabled:opacity-50"
         >
-          Add to Pool
+          Post
         </button>
       </div>
     </div>

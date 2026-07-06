@@ -1,20 +1,21 @@
-import type { Player, PlayerFact, Question, CustomQuestion } from "./supabase";
+import type { Player, PlayerFact, Question, SharedQuestion } from "./supabase";
 import { DEFAULT_FACTS, QUESTIONS_PER_FACT, buildQuestionText, pickDistractors } from "./facts";
 import { shuffle } from "./utils";
+import { extractShortLabel } from "./sharedQuestions";
 
 export interface GenerateInput {
   gameId: string;
   players: Player[];
   facts: PlayerFact[];
   /**
-   * Shared custom questions whose `subject_full_name` is in this game.
-   * Each one becomes a who-said-it question ("Whose [label] is [value]?")
-   * with the dropdown of players as the answer set.
-   *
-   * Pre-filtered by App.handleStart to only questions whose subject is
-   * currently playing, so we can safely look up subject by name.
+   * Shared community questions and (optionally) a flat list of all answers.
+   * Each (question, answer) pair whose submitter is a current player
+   * becomes a multiple-choice round: "What is [name]'s [short label]?"
+   * with the answer as the correct option and answers from other current
+   * players (or generic distractors) filling out the choice list.
    */
-  sharedCustomQuestions?: CustomQuestion[];
+  sharedQuestions?: SharedQuestion[];
+  sharedAnswers?: { question_id: string; submitted_by: string; value: string }[];
 }
 
 export type QuestionMode = "multiple-choice" | "who-said-it";
@@ -34,16 +35,23 @@ export function chooseQuestionMode(players: Player[]): QuestionMode {
 
 /**
  * Resolve the human-readable label for a default fact_key. Custom fact_keys
- * (UUIDs from the shared custom-question pool) carry their own label and
- * aren't routed through here.
+ * (UUIDs) carry their own context and aren't routed through here.
  */
 function getLabel(factKey: string): string {
   const def = DEFAULT_FACTS.find((d) => d.key === factKey);
   return def ? def.label : factKey.replace(/_/g, " ");
 }
 
+/** Universal fallback distractors when the answer pool runs thin. */
+const FALLBACK_DISTRACTORS = [
+  "Yes", "No", "Maybe", "It depends",
+  "Pizza", "Tacos", "Sushi", "Pancakes",
+  "Beach", "Mountains", "City", "Forest",
+];
+
 /**
- * Build multiple-choice trivia questions from the players' self-reported facts.
+ * Build multiple-choice trivia questions from the players' self-reported facts
+ * plus the shared community question bank.
  *
  * Variety levers per game:
  *   1. Random subject ordering (final shuffle)
@@ -56,16 +64,19 @@ function getLabel(factKey: string): string {
  * fact_value ("Whose favorite movie is Jurassic Park?") and the player
  * picks from a dropdown of everyone in the game.
  *
- * Shared custom questions (from the global pool) are appended as
- * who-said-it rounds regardless of player count, since the dropdown
- * IS the answer set and we don't have distractor banks for open-ended
- * custom labels.
+ * Shared community questions are emitted as multiple-choice rounds (since
+ * they have no inherent label) regardless of player count. They only fire
+ * when the answerer is currently playing; truncated at MAX_SHARED_ROUNDS
+ * to keep the overall game length bounded.
  */
+const MAX_SHARED_ROUNDS = 8;
+
 export function generateQuestions({
   gameId,
   players,
   facts,
-  sharedCustomQuestions,
+  sharedQuestions,
+  sharedAnswers,
 }: GenerateInput): Omit<Question, "id">[] {
   const mode = chooseQuestionMode(players);
 
@@ -111,8 +122,7 @@ export function generateQuestions({
       } else {
         // Same-category distractors: real movies for movie questions,
         // real places for vacation questions, etc. Never crosses categories
-        // into the subject's other facts (which used to give nonsense
-        // like "Popcorn" as a distractor for "favorite movie").
+        // into the subject's other facts.
         const otherPlayersSameKey = facts
           .filter((f) => f.fact_key === fact.fact_key && f.player_id !== subject.id)
           .map((f) => f.fact_value);
@@ -136,30 +146,70 @@ export function generateQuestions({
     }
   }
 
-  // ---- Shared custom questions ----
-  // Filter to those whose subject is currently in the game (App.handleStart
-  // pre-filters, but defend in case of empty values). Always who-said-it
-  // because we don't have a distractor bank for open-ended custom labels.
-  if (sharedCustomQuestions && sharedCustomQuestions.length > 0) {
+  // ---- Shared community questions ----
+  // For each (question, answer) where the answerer is in this game, emit
+  // a multiple-choice round. Cap at MAX_SHARED_ROUNDS so a chonky Q&A bank
+  // doesn't dominate the game.
+  if (
+    sharedQuestions &&
+    sharedQuestions.length > 0 &&
+    sharedAnswers &&
+    sharedAnswers.length > 0
+  ) {
     const nameToPlayer = new Map(players.map((p) => [p.name, p]));
-    for (const cq of sharedCustomQuestions) {
-      if (!cq.value.trim()) continue; // incomplete questions don't generate
-      const subject = nameToPlayer.get(cq.subject_full_name);
-      if (!subject) continue; // subject isn't in this game
-      const options = shuffle(players.map((p) => p.name));
-      const correctIndex = options.indexOf(subject.name);
-      questions.push({
-        game_id: gameId,
-        question_index: idx++,
-        subject_player_id: subject.id,
-        fact_key: cq.id,
-        mode: "who-said-it",
-        question_text: `Whose ${cq.label} is ${cq.value}?`,
-        options,
-        correct_option_index: correctIndex,
-        points: 100,
-      });
+    const playerNames = players.map((p) => p.name);
+
+    // All "other" answer values from current players, across every question.
+    // Used as the distractor pool once we exhaust same-question answers.
+    const crossPool: string[] = [];
+    for (const a of sharedAnswers) {
+      if (nameToPlayer.has(a.submitted_by) && a.value.trim()) {
+        crossPool.push(a.value.trim());
+      }
     }
+
+    const candidates: Omit<Question, "id">[] = [];
+    for (const q of shuffle(sharedQuestions)) {
+      // Subjects = everyone whose submitted an answer to THIS question AND is in the game
+      const answersForQ = sharedAnswers.filter(
+        (a) => a.question_id === q.id && nameToPlayer.has(a.submitted_by) && a.value.trim(),
+      );
+      for (const a of answersForQ) {
+        const subject = nameToPlayer.get(a.submitted_by)!;
+        const shortLabel = extractShortLabel(q.prompt);
+        const questionText = shortLabel
+          ? `What is ${subject.name}'s ${shortLabel}?`
+          : `What is ${subject.name}'s answer to "${q.prompt}"?`;
+
+        // Distractors: same-question other-answers first, then cross-question
+        // answers from current players, then universal fallbacks.
+        const sameQ = answersForQ
+          .filter((x) => x.submitted_by !== a.submitted_by)
+          .map((x) => x.value.trim());
+        const crossQ = crossPool.filter(
+          (v) => v.toLowerCase() !== a.value.trim().toLowerCase() && !sameQ.includes(v),
+        );
+        const fallbacks = FALLBACK_DISTRACTORS.filter(
+          (f) => f.toLowerCase() !== a.value.trim().toLowerCase() && !sameQ.includes(f) && !crossQ.includes(f),
+        );
+        const distractors = shuffle([...shuffle(sameQ), ...shuffle(crossQ), ...fallbacks]).slice(0, 3);
+        const options = shuffle([a.value.trim(), ...distractors]);
+        const correctIndex = options.indexOf(a.value.trim());
+
+        candidates.push({
+          game_id: gameId,
+          question_index: idx++,
+          subject_player_id: subject.id,
+          fact_key: q.id,
+          mode: "multiple-choice",
+          question_text: questionText,
+          options,
+          correct_option_index: correctIndex,
+          points: 100,
+        });
+      }
+    }
+    questions.push(...shuffle(candidates).slice(0, MAX_SHARED_ROUNDS));
   }
 
   // Shuffle so it doesn't go player-by-player

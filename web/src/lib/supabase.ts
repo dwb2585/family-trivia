@@ -77,21 +77,30 @@ export interface Profile {
 }
 
 /**
- * A user-defined question in the shared custom-question pool.
- * Any player can add a question (about any subject in the family roster)
- * and any player can delete one. At game start the engine filters by
- * subject being a current player and turns each into a who-said-it round.
- *
- * Note: legacy name was `ProfileCustomFact` (per-player scope). Renamed in
- * migration 0006 when the model went shared.
+ * Community Q&A question in the shared bank. Anyone can post a question,
+ * anyone can answer it (one answer per person per question — re-submitting
+ * upserts), anyone can delete either. No required subject, no required
+ * value at post time. Replaces the older `CustomQuestion` from migration 0006.
  */
-export interface CustomQuestion {
+export interface SharedQuestion {
   id: string;
-  prompt: string;             // "What's your favorite season?"
-  label: string;              // "favorite season" — used in question templates
-  value: string;              // "Autumn" — the subject's answer
-  subject_full_name: string;  // whose fact this is
-  created_by: string;         // who wrote it
+  prompt: string;         // "What's your favorite color?"
+  created_by: string;     // who posted it
   created_at: string;
   updated_at: string;
+}
+
+/** A single person\u2019s answer to a SharedQuestion. 1:1 per (question, submitter). */
+export interface SharedQuestionAnswer {
+  id: string;
+  question_id: string;
+  submitted_by: string;   // whose answer this is
+  value: string;          // "Purple"
+  created_at: string;
+  updated_at: string;
+}
+
+/** Convenience pairing returned by `getSharedQuestionsWithAnswers`. */
+export interface SharedQuestionWithAnswers extends SharedQuestion {
+  answers: SharedQuestionAnswer[];
 }
