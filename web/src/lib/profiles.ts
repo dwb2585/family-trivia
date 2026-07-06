@@ -47,7 +47,7 @@ export async function upsertProfile(
 }
 
 // ============================================================================
-// Shared Q&A bank lives in `web/src/lib/sharedQuestions.ts`
+// Default-fact pool CRUD lives in `web/src/lib/defaultFacts.ts`
 // ============================================================================
 
 // ============================================================================

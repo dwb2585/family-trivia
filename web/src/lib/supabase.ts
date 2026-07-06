@@ -52,7 +52,7 @@ export interface Question {
   question_index: number;
   subject_player_id: string;
   fact_key: string;
-  /** Question format — 'multiple-choice' for old format, 'who-said-it' for dropdown */
+  /** Question format - 'multiple-choice' for old format, 'who-said-it' for dropdown */
   mode: "multiple-choice" | "who-said-it";
   question_text: string;
   options: string[];
@@ -77,30 +77,20 @@ export interface Profile {
 }
 
 /**
- * Community Q&A question in the shared bank. Anyone can post a question,
- * anyone can answer it (one answer per person per question — re-submitting
- * upserts), anyone can delete either. No required subject, no required
- * value at post time. Replaces the older `CustomQuestion` from migration 0006.
+ * A row in the collaborative default-question pool. Anyone can add, edit,
+ * or delete. The `key` is the stable identifier used as `fact_key` in
+ * player_facts at game time; prompt + label + emoji are user-facing and
+ * freely editable. Replaces the previous hardcoded DEFAULT_FACTS array
+ * and the shared_questions Q&A bank (migration 0008).
  */
-export interface SharedQuestion {
+export interface DefaultFact {
   id: string;
-  prompt: string;         // "What's your favorite color?"
-  created_by: string;     // who posted it
+  key: string;            // "favorite_movie"
+  label: string;          // "favorite movie"
+  prompt: string;         // "What's your favorite movie?"
+  emoji: string;          // "🎬"
+  sort_order: number;     // lower = earlier in the lobby list
+  created_by: string;
   created_at: string;
   updated_at: string;
-}
-
-/** A single person\u2019s answer to a SharedQuestion. 1:1 per (question, submitter). */
-export interface SharedQuestionAnswer {
-  id: string;
-  question_id: string;
-  submitted_by: string;   // whose answer this is
-  value: string;          // "Purple"
-  created_at: string;
-  updated_at: string;
-}
-
-/** Convenience pairing returned by `getSharedQuestionsWithAnswers`. */
-export interface SharedQuestionWithAnswers extends SharedQuestion {
-  answers: SharedQuestionAnswer[];
 }

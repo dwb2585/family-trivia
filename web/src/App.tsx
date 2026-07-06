@@ -3,7 +3,7 @@ import { supabase, type Game, type Player, type Question, type Answer } from "@/
 import { uuid, randomCode } from "@/lib/utils";
 import { generateQuestions, scoreAnswer } from "@/lib/gameLogic";
 import { getProfile, upsertProfile, getProfilesForNames } from "@/lib/profiles";
-import { getSharedQuestionsWithAnswers } from "@/lib/sharedQuestions";
+import { getDefaultFacts } from "@/lib/defaultFacts";
 
 import { Home } from "@/components/screens/Home";
 import { CreateGame } from "@/components/screens/CreateGame";
@@ -49,10 +49,11 @@ export default function App() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Answer[]>([]);
   // Player IDs whose facts were prefilled from a saved profile on lobby entry.
-  // Used by Lobby to show a "welcome back" indicator.
   const [prefilledFromProfile, setPrefilledFromProfile] = useState<Set<string>>(() => new Set());
-  // Per-name avatar emoji overrides pulled from each player's profile.
-  // Map keyed by full_name → emoji. Absent names fall back to the roster default.
+  // The collaborative default-question pool. Loaded once at app startup and
+  // refreshed when the user comes back from the profile screen (where they
+  // can add / edit / delete rows).
+  const [defaultFacts, setDefaultFacts] = useState<import("@/lib/supabase").DefaultFact[]>([]);
   const [avatarOverrides, setAvatarOverrides] = useState<Record<string, string>>({});
 
   const clientIdRef = useRef(session?.clientId || uuid());
@@ -69,6 +70,17 @@ export default function App() {
       null,
     [myPlayers, session?.activePlayerId],
   );
+
+  /** Re-fetch the default-fact pool. Used after profile edits and at startup. */
+  const refreshDefaultFacts = useCallback(async () => {
+    const list = await getDefaultFacts();
+    setDefaultFacts(list);
+  }, []);
+
+  // Load default facts once on app startup so lobby + profile have them ready.
+  useEffect(() => {
+    refreshDefaultFacts();
+  }, [refreshDefaultFacts]);
 
   // ---- Realtime subscriptions ----
   useEffect(() => {
@@ -146,7 +158,6 @@ export default function App() {
     let cancelled = false;
 
     (async () => {
-      // Always fetch game + players first.
       const [{ data: g }, { data: ps }] = await Promise.all([
         supabase.from("games").select("*").eq("id", session.gameId).maybeSingle(),
         supabase.from("players").select("*").eq("game_id", session.gameId),
@@ -164,8 +175,6 @@ export default function App() {
       setGame(g);
       setPlayers((ps ?? []) as Player[]);
 
-      // Pre-resolve avatar emojis for everyone in the game. Persisted per-
-      // profile so a player's chosen emoji follows them across games.
       const nameList = (ps ?? []).map((p: Player) => p.name);
       if (nameList.length > 0) {
         const profiles = await getProfilesForNames(nameList);
@@ -180,10 +189,9 @@ export default function App() {
         setAvatarOverrides({});
       }
 
-      // CRITICAL: if the game is mid-play or finished, late joiners need
-      // to fetch the existing questions + answers. Realtime only delivers
-      // NEW events — it doesn't replay history — so without this, anyone
-      // who joins after the host hit Start gets stuck on "Loading…" forever.
+      // Late joiners: fetch existing questions + answers. Realtime only
+      // delivers new events, so without this, anyone who joins after Start
+      // gets stuck on "Loading..." forever.
       if (g.status !== "lobby") {
         const [{ data: qs }, { data: ans }] = await Promise.all([
           supabase
@@ -200,8 +208,8 @@ export default function App() {
         if (!cancelled && ans) setAnswers(ans as Answer[]);
       }
 
-      // Restore facts for ALL my players (so the lobby fact form prefills
-      // even if we're resuming mid-game).
+      // Restore facts for all my players (so the lobby form prefills even
+      // if we're resuming mid-game).
       const myRows = (ps ?? []).filter((p: Player) => p.client_id === clientIdRef.current);
       if (myRows.length > 0) {
         const ids = myRows.map((p) => p.id);
@@ -219,8 +227,6 @@ export default function App() {
         }
       }
 
-      // Phase from status — set AFTER questions are loaded so the renderer
-      // can find currentQuestion immediately.
       if (g.status === "lobby") setPhase("lobby");
       else if (g.status === "playing") setPhase("playing");
       else if (g.status === "finished") setPhase("finished");
@@ -247,11 +253,8 @@ export default function App() {
         .single();
       if (error || !p) throw new Error(error?.message || "Could not add player");
 
-      // Prefill facts from the player's saved profile, if one exists.
-      // This is how returning players don't have to re-type all 8 facts.
-      // (Shared Q&A is fetched separately at game-start time — see
-      // sharedQuestions.ts — and doesn't need to be prefilled here.)
-      // and don't need to be prefilled into the per-player facts map.)
+      // Prefill facts from the player's saved profile (8 default keys only),
+      // so returning players don't have to re-type.
       const profile = await getProfile(name);
       if (profile) {
         setFactsByPlayer((prev) => ({
@@ -264,7 +267,6 @@ export default function App() {
           return next;
         });
       } else {
-        // No profile yet — ensure an entry exists so Lobby doesn't show stale data
         setFactsByPlayer((prev) =>
           prev[p.id] ? prev : { ...prev, [p.id]: {} },
         );
@@ -354,8 +356,6 @@ export default function App() {
   }, []);
 
   const handleReady = useCallback(async () => {
-    // Mark all my players ready + persist their facts (this game) AND update
-    // their profile (across games) so next time they don't re-enter.
     for (const p of myPlayers) {
       const pf = factsByPlayer[p.id] || {};
       await persistFacts(p.id, pf);
@@ -371,8 +371,6 @@ export default function App() {
   const handleStart = useCallback(async () => {
     if (!game || !session?.hostToken) throw new Error("Only the host can start");
 
-    // Persist host's facts too (in case they hit Start without clicking Ready).
-    // And update their profile so the next game has them prefilled.
     if (me) {
       const pf = factsByPlayer[me.id] || {};
       await persistFacts(me.id, pf);
@@ -390,27 +388,16 @@ export default function App() {
       .select("*")
       .in("player_id", ids);
 
-    // Pull the shared community Q&A bank. The generator filters to
-    // (question, answer) pairs whose answerer is in this game.
-    const shared = await getSharedQuestionsWithAnswers();
-    const sharedQuestions = shared.map(({ answers: _answers, ...q }) => q);
-    const sharedAnswers = shared.flatMap((q) => q.answers);
-
     const generated = generateQuestions({
       gameId: game.id,
       players: (playersAll ?? []) as Player[],
       facts: (factsAll ?? []) as { id: string; player_id: string; fact_key: string; fact_value: string }[],
-      sharedQuestions,
-      sharedAnswers,
+      defaultFacts,
     });
 
     if (generated.length === 0) {
       throw new Error("Not enough facts to generate questions. Make sure everyone entered at least one fact.");
     }
-    // 2026-07-05: facts are now optional. Players can submit with as few as
-    // one fact, so the host sees this error only when literally nothing was
-    // entered across the whole game (which should be impossible given the
-    // Lobby gate, but kept as a defensive check).
 
     const { error: insErr } = await supabase.from("questions").insert(generated);
     if (insErr) throw new Error(insErr.message);
@@ -426,7 +413,7 @@ export default function App() {
       .eq("id", game.id)
       .eq("host_token", session.hostToken);
     if (gErr) throw new Error(gErr.message);
-  }, [game, session?.hostToken, me, factsByPlayer, persistFacts]);
+  }, [game, session?.hostToken, me, factsByPlayer, persistFacts, defaultFacts]);
 
   const handleAnswer = useCallback(
     async (optionIndex: number) => {
@@ -440,7 +427,7 @@ export default function App() {
       );
       if (alreadyAnswered) return;
 
-      const msTaken = 0; // no question_started_at tracked yet
+      const msTaken = 0;
       const existingCorrect = answers.some(
         (a) => a.question_id === currentQ.id && a.is_correct,
       );
@@ -506,11 +493,6 @@ export default function App() {
     // Phase will be set by initial fetch effect.
   }, []);
 
-  /**
-   * Refresh avatar overrides for the current players in the game.
-   * Called after the profile screen edits an avatar so changes propagate
-   * immediately without needing to re-join the game.
-   */
   const refreshAvatars = useCallback(async () => {
     const nameList = players.map((p) => p.name);
     if (nameList.length === 0) return;
@@ -521,6 +503,16 @@ export default function App() {
     }
     setAvatarOverrides(next);
   }, [players]);
+
+  /**
+   * Reload the default-fact pool after the user comes back from the
+   * profile screen where they may have added/edited/deleted rows.
+   */
+  const handleProfileClose = useCallback(async () => {
+    await refreshDefaultFacts();
+    refreshAvatars();
+    setPhase("home");
+  }, [refreshDefaultFacts, refreshAvatars]);
 
   const handleLeave = useCallback(() => {
     saveSession(null);
@@ -542,7 +534,6 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const joinCode = params.get("join");
     if (joinCode && !session && phase === "home") {
-      // Trigger join flow via a custom event
       window.dispatchEvent(new CustomEvent("deeplink-join", { detail: joinCode }));
       window.history.replaceState({}, "", window.location.pathname);
     }
@@ -572,8 +563,6 @@ export default function App() {
     [me, factsByPlayer],
   );
 
-  // Facts for ALL players on this device, keyed by player id. Used by the
-  // Lobby to check whether every my-player has all 8 facts filled in.
   const myFactsByPlayer = useMemo(() => {
     const map: Record<string, Record<string, string>> = {};
     for (const p of myPlayers) {
@@ -604,7 +593,13 @@ export default function App() {
   }
 
   if (phase === "profile") {
-    return <ProfileScreen onBack={() => { refreshAvatars(); setPhase("home"); }} />;
+    return (
+      <ProfileScreen
+        onBack={handleProfileClose}
+        defaultFacts={defaultFacts}
+        onDefaultFactsChanged={refreshDefaultFacts}
+      />
+    );
   }
 
   if (phase === "lobby" && game && me) {
@@ -616,6 +611,7 @@ export default function App() {
         players={players}
         facts={myFacts}
         myFactsByPlayer={myFactsByPlayer}
+        defaultFacts={defaultFacts}
         avatarOverrides={avatarOverrides}
         prefilledFromProfile={prefilledFromProfile.has(me.id)}
         onFactChange={handleFactChange}
