@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import type { Profile, ProfileCustomFact } from "./supabase";
+import type { Profile } from "./supabase";
 import { DEFAULT_FACTS } from "./facts";
 
 export async function getProfile(fullName: string): Promise<Profile | null> {
@@ -47,67 +47,16 @@ export async function upsertProfile(
 }
 
 // ============================================================================
-// Custom facts (user-defined questions beyond the 8 defaults)
+// Custom questions
 // ============================================================================
+// Custom questions were moved from a per-player `profile_custom_facts` model
+// to a shared `custom_questions` pool (migration 0006). Anyone can write into
+// it (about anyone in the family) and anyone can delete. See
+// `web/src/lib/customQuestions.ts` for the CRUD helpers.
 
-export async function getCustomFacts(fullName: string): Promise<ProfileCustomFact[]> {
-  if (!fullName || !fullName.trim()) return [];
-  const { data, error } = await supabase
-    .from("profile_custom_facts")
-    .select("*")
-    .eq("full_name", fullName.trim())
-    .order("created_at", { ascending: true });
-  if (error) {
-    console.warn("Failed to fetch custom facts for", fullName, error);
-    return [];
-  }
-  return (data ?? []) as ProfileCustomFact[];
-}
-
-export async function createCustomFact(
-  fullName: string,
-  prompt: string,
-  label: string,
-  value: string,
-): Promise<ProfileCustomFact | null> {
-  if (!fullName || !prompt.trim() || !label.trim()) return null;
-  const { data, error } = await supabase
-    .from("profile_custom_facts")
-    .insert({
-      full_name: fullName.trim(),
-      prompt: prompt.trim(),
-      label: label.trim(),
-      value: value.trim(),
-    })
-    .select()
-    .single();
-  if (error || !data) {
-    console.warn("Failed to create custom fact", error);
-    return null;
-  }
-  return data as ProfileCustomFact;
-}
-
-export async function updateCustomFact(
-  id: string,
-  patch: Partial<Pick<ProfileCustomFact, "prompt" | "label" | "value">>,
-): Promise<void> {
-  const clean: Record<string, string> = {};
-  if (patch.prompt !== undefined) clean.prompt = patch.prompt.trim();
-  if (patch.label !== undefined) clean.label = patch.label.trim();
-  if (patch.value !== undefined) clean.value = patch.value.trim();
-  if (Object.keys(clean).length === 0) return;
-  const { error } = await supabase
-    .from("profile_custom_facts")
-    .update(clean)
-    .eq("id", id);
-  if (error) console.warn("Failed to update custom fact", id, error);
-}
-
-export async function deleteCustomFact(id: string): Promise<void> {
-  const { error } = await supabase.from("profile_custom_facts").delete().eq("id", id);
-  if (error) console.warn("Failed to delete custom fact", id, error);
-}
+// ============================================================================
+// Profile avatar
+// ============================================================================
 
 /**
  * Fetch profiles for many full_names in one query.

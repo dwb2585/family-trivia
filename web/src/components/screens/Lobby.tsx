@@ -7,7 +7,7 @@ import { Marquee } from "@/components/ui/Marquee";
 import { LeaveButton } from "@/components/ui/LeaveButton";
 import { DEFAULT_FACTS, type FactDef } from "@/lib/facts";
 import { avatarFor } from "@/lib/family";
-import type { Player, ProfileCustomFact } from "@/lib/supabase";
+import type { Player } from "@/lib/supabase";
 import { cn, uuid } from "@/lib/utils";
 
 interface LobbyProps {
@@ -18,8 +18,6 @@ interface LobbyProps {
   facts: Record<string, string>;
   /** Facts for ALL players on this device, keyed by player id */
   myFactsByPlayer: Record<string, Record<string, string>>;
-  /** Custom (user-defined) facts for the active player */
-  customFacts: ProfileCustomFact[];
   /** full_name -> avatar emoji overrides from each profile */
   avatarOverrides: Record<string, string>;
   /** True if this player's facts were just loaded from their saved profile */
@@ -42,7 +40,6 @@ export function Lobby({
   players,
   facts,
   myFactsByPlayer,
-  customFacts,
   avatarOverrides,
   prefilledFromProfile = false,
   isHost,
@@ -302,35 +299,13 @@ export function Lobby({
                     />
                   ))}
 
-                  {customFacts.length > 0 ? (
-                    <div className="pt-2 mt-2 border-t border-border/50">
-                      <p className="text-[10px] uppercase tracking-[0.18em] text-cream/40 font-bold mb-2">
-                        Your custom questions
-                      </p>
-                      {customFacts.map((cf) => (
-                        <FactField
-                          key={cf.id}
-                          fact={{
-                            key: cf.id,
-                            label: cf.label,
-                            prompt: cf.prompt,
-                            emoji: "",
-                          }}
-                          value={facts[cf.id] || ""}
-                          onChange={(v) => onFactChange(cf.id, v)}
-                          disabled={!!activePlayer?.ready}
-                        />
-                      ))}
-                    </div>
-                  ) : null}
-
                   {onOpenProfile ? (
                     <button
                       type="button"
                       onClick={onOpenProfile}
                       className="block w-full text-center text-sm text-cream/50 hover:text-cyan underline underline-offset-4 pt-2 transition-colors"
                     >
-                      Add or edit custom questions in your profile
+                      Browse shared custom questions in your profile
                     </button>
                   ) : null}
                 </div>

@@ -7,16 +7,18 @@ import { LeaveButton } from "@/components/ui/LeaveButton";
 import { FamilyMemberSelect } from "@/components/ui/Select";
 import { FAMILY } from "@/lib/family";
 import { DEFAULT_FACTS } from "@/lib/facts";
-import type { ProfileCustomFact } from "@/lib/supabase";
+import type { CustomQuestion } from "@/lib/supabase";
 import {
   getProfile,
   upsertProfile,
-  getCustomFacts,
-  createCustomFact,
-  updateCustomFact,
-  deleteCustomFact,
   setProfileAvatar,
 } from "@/lib/profiles";
+import {
+  getCustomQuestions,
+  createCustomQuestion,
+  updateCustomQuestion,
+  deleteCustomQuestion,
+} from "@/lib/customQuestions";
 import { cn } from "@/lib/utils";
 
 /**
@@ -38,30 +40,29 @@ interface ProfileScreenProps {
 
 /**
  * Profile editor — pick a name, then edit that person's default facts
- * (the 8 built-in keys) and any custom questions they've added.
+ * (the 8 built-in keys) and avatar.
  *
- * Auto-saves with a 600ms debounce on edit, so changes stick without
- * needing a Save button. Custom questions can be added/edited/deleted
- * inline.
+ * The "Custom Questions" section below shows the SHARED pool — any player
+ * can add a question about any subject in the family roster, and any
+ * player can delete. Auto-saves default facts with a 600ms debounce.
  */
 export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) {
   const [name, setName] = useState(initialName);
   const [defaultFacts, setDefaultFacts] = useState<Record<string, string>>({});
-  const [customFacts, setCustomFacts] = useState<ProfileCustomFact[]>([]);
+  const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>([]);
   const [avatarEmoji, setAvatarEmoji] = useState<string | null>(null);
   // When avatarEmoji is null we fall back to the family roster default.
-  // `avatarEmoji === "__cleared__"` means user explicitly chose "use default".
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addingCustom, setAddingCustom] = useState(false);
 
-  // Load profile when name changes
+  // Load profile + shared custom questions when name changes
   useEffect(() => {
     if (!name.trim()) {
       setDefaultFacts({});
-      setCustomFacts([]);
       setAvatarEmoji(null);
+      setLoading(false);
       return;
     }
     let cancelled = false;
@@ -70,7 +71,9 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
     (async () => {
       const [profile, customs] = await Promise.all([
         getProfile(name),
-        getCustomFacts(name),
+        // Pull the whole shared pool once — small table, no need to filter
+        // by subject here. The UI shows every question in the pool.
+        getCustomQuestions(),
       ]);
       if (cancelled) return;
       // Pre-fill with empty strings for all default keys so the form shows them
@@ -78,7 +81,7 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
       for (const f of DEFAULT_FACTS) blank[f.key] = "";
       if (profile) Object.assign(blank, profile.facts);
       setDefaultFacts(blank);
-      setCustomFacts(customs);
+      setCustomQuestions(customs);
       // 0/empty-string from DB → null (use roster default).
       setAvatarEmoji(
         profile && profile.avatar_emoji && profile.avatar_emoji.length > 0
@@ -124,13 +127,24 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
     await setProfileAvatar(name, next ?? "");
   }
 
-  // ----- Custom facts handlers -----
+  // ----- Shared custom question handlers -----
 
-  async function handleAddCustom(prompt: string, label: string, value: string) {
+  async function handleAddCustom(
+    prompt: string,
+    label: string,
+    value: string,
+    subject: string,
+  ) {
     if (!name.trim()) return;
-    const created = await createCustomFact(name, prompt, label, value);
+    const created = await createCustomQuestion({
+      prompt,
+      label,
+      value,
+      subject_full_name: subject,
+      created_by: name.trim(),
+    });
     if (created) {
-      setCustomFacts((prev) => [...prev, created]);
+      setCustomQuestions((prev) => [...prev, created]);
       setAddingCustom(false);
     } else {
       setError("Could not add custom question");
@@ -139,17 +153,17 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
 
   async function handleUpdateCustom(
     id: string,
-    patch: Partial<Pick<ProfileCustomFact, "prompt" | "label" | "value">>,
+    patch: Partial<Pick<CustomQuestion, "prompt" | "label" | "value" | "subject_full_name">>,
   ) {
-    setCustomFacts((prev) =>
+    setCustomQuestions((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...patch } : c)),
     );
-    await updateCustomFact(id, patch);
+    await updateCustomQuestion(id, patch);
   }
 
   async function handleDeleteCustom(id: string) {
-    setCustomFacts((prev) => prev.filter((c) => c.id !== id));
-    await deleteCustomFact(id);
+    setCustomQuestions((prev) => prev.filter((c) => c.id !== id));
+    await deleteCustomQuestion(id);
   }
 
   return (
@@ -225,23 +239,23 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
                 </CardBody>
               </Card>
 
-              {/* Custom facts */}
+              {/* Shared custom question pool */}
               <Card className="mb-4">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">Custom Questions</CardTitle>
+                  <CardTitle className="text-lg">Shared Custom Questions</CardTitle>
                   <p className="text-foreground/60 text-xs mt-1">
-                    Add your own — e.g. "What's your favorite season?" — and pick from a dropdown in games.
+                    One pool, everyone plays with them. Add a question about anyone in the family roster — anyone can also delete.
                   </p>
                 </CardHeader>
                 <CardBody className="pt-2 space-y-3">
-                  {customFacts.length === 0 && !addingCustom ? (
+                  {customQuestions.length === 0 && !addingCustom ? (
                     <p className="text-cream/50 text-sm text-center py-3">
-                      No custom questions yet.
+                      No custom questions in the pool yet.
                     </p>
                   ) : null}
 
                   <AnimatePresence initial={false}>
-                    {customFacts.map((c) => (
+                    {customQuestions.map((c) => (
                       <motion.div
                         key={c.id}
                         initial={{ opacity: 0, y: 6 }}
@@ -249,8 +263,8 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
                         exit={{ opacity: 0, x: -20, height: 0 }}
                         transition={{ duration: 0.18 }}
                       >
-                        <CustomFactCard
-                          fact={c}
+                        <CustomQuestionCard
+                          question={c}
                           onChange={(patch) => handleUpdateCustom(c.id, patch)}
                           onDelete={() => handleDeleteCustom(c.id)}
                         />
@@ -259,7 +273,8 @@ export function ProfileScreen({ initialName = "", onBack }: ProfileScreenProps) 
                   </AnimatePresence>
 
                   {addingCustom ? (
-                    <NewCustomFactForm
+                    <NewCustomQuestionForm
+                      defaultSubject={name}
                       onSubmit={handleAddCustom}
                       onCancel={() => setAddingCustom(false)}
                     />
@@ -331,37 +346,42 @@ function DefaultFactField({
   );
 }
 
-function CustomFactCard({
-  fact,
+function CustomQuestionCard({
+  question,
   onChange,
   onDelete,
 }: {
-  fact: ProfileCustomFact;
-  onChange: (patch: Partial<Pick<ProfileCustomFact, "prompt" | "label" | "value">>) => void;
+  question: CustomQuestion;
+  onChange: (patch: Partial<Pick<CustomQuestion, "prompt" | "label" | "value" | "subject_full_name">>) => void;
   onDelete: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [prompt, setPrompt] = useState(fact.prompt);
-  const [label, setLabel] = useState(fact.label);
-  const [value, setValue] = useState(fact.value);
+  const [prompt, setPrompt] = useState(question.prompt);
+  const [label, setLabel] = useState(question.label);
+  const [value, setValue] = useState(question.value);
+  const [subject, setSubject] = useState(question.subject_full_name);
 
-  // Sync local state when fact changes externally
+  // Sync local state when the row changes externally (e.g. realtime update)
   useEffect(() => {
-    setPrompt(fact.prompt);
-    setLabel(fact.label);
-    setValue(fact.value);
-  }, [fact.prompt, fact.label, fact.value]);
+    setPrompt(question.prompt);
+    setLabel(question.label);
+    setValue(question.value);
+    setSubject(question.subject_full_name);
+  }, [question.prompt, question.label, question.value, question.subject_full_name]);
 
   if (!editing) {
+    const rosterEmoji = FAMILY.find((m) => m.fullName === question.subject_full_name)?.emoji ?? "👤";
     return (
       <div className="flex items-start gap-2 p-3 rounded-xl bg-stage/40 border border-gold/20">
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-foreground">{fact.prompt}</div>
+          <div className="text-sm font-semibold text-foreground">{question.prompt}</div>
           <div className="text-xs text-cream/50 mt-0.5">
-            Label: <span className="text-cream/70">{fact.label}</span>
+            About <span className="text-cream/70">{rosterEmoji} {question.subject_full_name}</span>
+            {" \u00b7 "}
+            added by <span className="text-cream/70">{question.created_by}</span>
           </div>
           <div className="text-sm text-gold mt-1">
-            {fact.value || <span className="text-cream/50 italic">no answer yet</span>}
+            {question.value || <span className="text-cream/50 italic">no answer yet</span>}
           </div>
         </div>
         <div className="flex flex-col gap-1 shrink-0">
@@ -401,15 +421,22 @@ function CustomFactCard({
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="Your answer"
+        placeholder="The subject's answer"
         className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm focus:bg-stage"
+      />
+      <FamilyMemberSelect
+        label="About"
+        value={subject}
+        onChange={setSubject}
+        allowCustom
       />
       <div className="flex gap-2 justify-end">
         <button
           onClick={() => {
-            setPrompt(fact.prompt);
-            setLabel(fact.label);
-            setValue(fact.value);
+            setPrompt(question.prompt);
+            setLabel(question.label);
+            setValue(question.value);
+            setSubject(question.subject_full_name);
             setEditing(false);
           }}
           className="px-3 h-9 rounded-lg bg-stage text-cream/70 hover:text-foreground text-sm font-semibold"
@@ -418,10 +445,10 @@ function CustomFactCard({
         </button>
         <button
           onClick={() => {
-            onChange({ prompt, label, value });
+            onChange({ prompt, label, value, subject_full_name: subject });
             setEditing(false);
           }}
-          disabled={!prompt.trim() || !label.trim()}
+          disabled={!prompt.trim() || !label.trim() || !subject.trim()}
           className="px-3 h-9 rounded-lg bg-gradient-to-br from-cyan to-violet text-stage text-sm font-bold shadow-cyan-glow-sm disabled:opacity-50"
         >
           Save
@@ -431,16 +458,19 @@ function CustomFactCard({
   );
 }
 
-function NewCustomFactForm({
+function NewCustomQuestionForm({
+  defaultSubject,
   onSubmit,
   onCancel,
 }: {
-  onSubmit: (prompt: string, label: string, value: string) => void;
+  defaultSubject: string;
+  onSubmit: (prompt: string, label: string, value: string, subject: string) => void;
   onCancel: () => void;
 }) {
   const [prompt, setPrompt] = useState("");
   const [label, setLabel] = useState("");
   const [value, setValue] = useState("");
+  const [subject, setSubject] = useState(defaultSubject);
 
   function deriveLabel(p: string): string {
     // Tiny heuristic: strip "What's your / Where's your / Who" prefixes
@@ -477,9 +507,18 @@ function NewCustomFactForm({
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="Your answer (can add later)"
+        placeholder="The answer (e.g. Autumn)"
         className="w-full h-10 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm focus:bg-stage"
       />
+      <FamilyMemberSelect
+        label="About"
+        value={subject}
+        onChange={setSubject}
+        allowCustom
+      />
+      <p className="text-[10px] uppercase tracking-[0.18em] text-cream/40 font-bold">
+        You'll be listed as the author: <span className="text-cream/70">{defaultSubject}</span>
+      </p>
       <div className="flex gap-2 justify-end">
         <button
           onClick={onCancel}
@@ -488,11 +527,11 @@ function NewCustomFactForm({
           Cancel
         </button>
         <button
-          onClick={() => onSubmit(prompt, label, value)}
-          disabled={!prompt.trim() || !label.trim()}
+          onClick={() => onSubmit(prompt, label, value, subject)}
+          disabled={!prompt.trim() || !label.trim() || !subject.trim()}
           className="px-3 h-9 rounded-lg bg-gradient-to-br from-cyan to-violet text-stage text-sm font-bold shadow-cyan-glow-sm disabled:opacity-50"
         >
-          Add Question
+          Add to Pool
         </button>
       </div>
     </div>

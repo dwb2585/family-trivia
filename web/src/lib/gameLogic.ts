@@ -1,4 +1,4 @@
-import type { Player, PlayerFact, Question } from "./supabase";
+import type { Player, PlayerFact, Question, CustomQuestion } from "./supabase";
 import { DEFAULT_FACTS, QUESTIONS_PER_FACT, buildQuestionText, pickDistractors } from "./facts";
 import { shuffle } from "./utils";
 
@@ -7,12 +7,14 @@ export interface GenerateInput {
   players: Player[];
   facts: PlayerFact[];
   /**
-   * Metadata for custom (user-defined) facts, keyed by the fact_key they
-   * were saved under in player_facts (which equals the custom fact's id).
-   * Lets the question generator build proper prompts for custom questions
-   * — e.g. "Whose favorite season is Autumn?"
+   * Shared custom questions whose `subject_full_name` is in this game.
+   * Each one becomes a who-said-it question ("Whose [label] is [value]?")
+   * with the dropdown of players as the answer set.
+   *
+   * Pre-filtered by App.handleStart to only questions whose subject is
+   * currently playing, so we can safely look up subject by name.
    */
-  customFactMetadata?: Record<string, { label: string; prompt: string }>;
+  sharedCustomQuestions?: CustomQuestion[];
 }
 
 export type QuestionMode = "multiple-choice" | "who-said-it";
@@ -31,17 +33,13 @@ export function chooseQuestionMode(players: Player[]): QuestionMode {
 }
 
 /**
- * Resolve the human-readable label for any fact_key — default (from
- * DEFAULT_FACTS) or custom (from the metadata map passed in).
+ * Resolve the human-readable label for a default fact_key. Custom fact_keys
+ * (UUIDs from the shared custom-question pool) carry their own label and
+ * aren't routed through here.
  */
-function getLabel(
-  factKey: string,
-  customMetadata?: Record<string, { label: string; prompt: string }>,
-): string {
+function getLabel(factKey: string): string {
   const def = DEFAULT_FACTS.find((d) => d.key === factKey);
-  if (def) return def.label;
-  if (customMetadata?.[factKey]?.label) return customMetadata[factKey].label;
-  return factKey.replace(/_/g, " ");
+  return def ? def.label : factKey.replace(/_/g, " ");
 }
 
 /**
@@ -49,20 +47,26 @@ function getLabel(
  *
  * Variety levers per game:
  *   1. Random subject ordering (final shuffle)
- *   2. Random fact_key selection per subject (QUESTIONS_PER_FACT of 8+N)
+ *   2. Random fact_key selection per subject (QUESTIONS_PER_FACT of 8)
  *   3. Randomized question prompt via buildQuestionText (4-5 phrasings per
- *      default key) — custom facts use a generic template
+ *      default key)
  *   4. Shuffled answer-option order
- *
- * Works for both the 8 default fact_keys AND any custom user-defined facts
- * (passed via customFactMetadata). Custom facts' fact_key in player_facts is
- * the custom fact's uuid, and we look up its label/prompt via that.
  *
  * For 4+ players the format flips to "who-said-it": question names the
  * fact_value ("Whose favorite movie is Jurassic Park?") and the player
  * picks from a dropdown of everyone in the game.
+ *
+ * Shared custom questions (from the global pool) are appended as
+ * who-said-it rounds regardless of player count, since the dropdown
+ * IS the answer set and we don't have distractor banks for open-ended
+ * custom labels.
  */
-export function generateQuestions({ gameId, players, facts, customFactMetadata }: GenerateInput): Omit<Question, "id">[] {
+export function generateQuestions({
+  gameId,
+  players,
+  facts,
+  sharedCustomQuestions,
+}: GenerateInput): Omit<Question, "id">[] {
   const mode = chooseQuestionMode(players);
 
   // Map player_id -> facts[]
@@ -85,8 +89,7 @@ export function generateQuestions({ gameId, players, facts, customFactMetadata }
     const picked = shuffle(subjectFacts).slice(0, QUESTIONS_PER_FACT);
 
     for (const fact of picked) {
-      const label = getLabel(fact.fact_key, customFactMetadata);
-      const isCustom = !DEFAULT_FACTS.some((d) => d.key === fact.fact_key);
+      const label = getLabel(fact.fact_key);
 
       if (mode === "who-said-it") {
         // Question names the value, dropdown of player names is the answer set.
@@ -110,8 +113,6 @@ export function generateQuestions({ gameId, players, facts, customFactMetadata }
         // real places for vacation questions, etc. Never crosses categories
         // into the subject's other facts (which used to give nonsense
         // like "Popcorn" as a distractor for "favorite movie").
-        // Custom (open-ended) facts fall back to other players' same-key
-        // answers + their FACT_DISTRACTOR bank (which is empty for custom).
         const otherPlayersSameKey = facts
           .filter((f) => f.fact_key === fact.fact_key && f.player_id !== subject.id)
           .map((f) => f.fact_value);
@@ -126,16 +127,38 @@ export function generateQuestions({ gameId, players, facts, customFactMetadata }
           subject_player_id: subject.id,
           fact_key: fact.fact_key,
           mode: "multiple-choice",
-          // Default facts get the rich FACT_PROMPTS bank; custom facts use
-          // a generic template since their prompt is already user-defined.
-          question_text: isCustom
-            ? `What's ${subject.name}'s ${label}?`
-            : buildQuestionText(subject.name, fact.fact_key),
+          question_text: buildQuestionText(subject.name, fact.fact_key),
           options,
           correct_option_index: correctIndex,
           points: 100,
         });
       }
+    }
+  }
+
+  // ---- Shared custom questions ----
+  // Filter to those whose subject is currently in the game (App.handleStart
+  // pre-filters, but defend in case of empty values). Always who-said-it
+  // because we don't have a distractor bank for open-ended custom labels.
+  if (sharedCustomQuestions && sharedCustomQuestions.length > 0) {
+    const nameToPlayer = new Map(players.map((p) => [p.name, p]));
+    for (const cq of sharedCustomQuestions) {
+      if (!cq.value.trim()) continue; // incomplete questions don't generate
+      const subject = nameToPlayer.get(cq.subject_full_name);
+      if (!subject) continue; // subject isn't in this game
+      const options = shuffle(players.map((p) => p.name));
+      const correctIndex = options.indexOf(subject.name);
+      questions.push({
+        game_id: gameId,
+        question_index: idx++,
+        subject_player_id: subject.id,
+        fact_key: cq.id,
+        mode: "who-said-it",
+        question_text: `Whose ${cq.label} is ${cq.value}?`,
+        options,
+        correct_option_index: correctIndex,
+        points: 100,
+      });
     }
   }
 
