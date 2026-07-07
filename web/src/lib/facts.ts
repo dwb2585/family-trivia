@@ -10,36 +10,59 @@ export interface FactDef {
   emoji: string;
 }
 
+// v3 pool — mirrors `supabase/migrations/0010_replace_pool_v3.sql`.
+// Keep this in sync with the DB so profile-save key filtering (in
+// `profiles.ts`) doesn't drop legitimate answers.
+//
+// Kind discriminator lives in the DB only (`default_facts.kind`) — clients
+// that need it should join via `getDefaultFacts()`. This static array is
+// the legacy fallback for save-time filtering.
 export const DEFAULT_FACTS: FactDef[] = [
-  { key: "favorite_movie", label: "favorite movie", prompt: "What's your all-time favorite movie?", emoji: "🎬" },
-  { key: "dream_vacation", label: "dream vacation", prompt: "Where's your dream vacation?", emoji: "🏝️" },
-  { key: "go_to_snack", label: "go-to snack", prompt: "What's your go-to snack?", emoji: "🍿" },
-  { key: "hidden_talent", label: "hidden talent", prompt: "What's a hidden talent you have?", emoji: "✨" },
-  { key: "first_concert", label: "first concert", prompt: "What was your first concert?", emoji: "🎤" },
-  { key: "guilty_pleasure_song", label: "guilty pleasure song", prompt: "What's your most embarrassing song you love?", emoji: "🎵" },
-  { key: "kid_dream_job", label: "kid dream job", prompt: "What did you want to be when you grew up?", emoji: "🚀" },
-  { key: "unpopular_opinion", label: "unpopular opinion", prompt: "What's an unpopular opinion you hold?", emoji: "🤔" },
-  // ── Round 2: 20 more fact keys (added 2026-07-05) ───────────────────
-  { key: "favorite_book", label: "favorite book", prompt: "What's your favorite book?", emoji: "📚" },
-  { key: "favorite_cuisine", label: "favorite cuisine", prompt: "What's your favorite type of food?", emoji: "🍜" },
-  { key: "morning_or_night", label: "morning or night", prompt: "Are you a morning person or a night owl?", emoji: "🌅" },
-  { key: "coffee_or_tea", label: "coffee or tea", prompt: "Coffee or tea?", emoji: "☕" },
-  { key: "favorite_season", label: "favorite season", prompt: "What's your favorite season?", emoji: "🍂" },
-  { key: "superpower", label: "superpower", prompt: "If you could have any superpower, what would it be?", emoji: "🦸" },
-  { key: "famous_dinner_guest", label: "famous dinner guest", prompt: "Which famous person (alive or dead) would you invite to dinner?", emoji: "🍽️" },
-  { key: "favorite_podcast", label: "favorite podcast", prompt: "What's a podcast you actually listen to?", emoji: "🎙️" },
-  { key: "most_used_app", label: "most-used app", prompt: "Which app do you open most?", emoji: "📱" },
-  { key: "pet_peeve", label: "pet peeve", prompt: "What's a tiny thing that annoys you more than it should?", emoji: "😤" },
-  { key: "best_advice", label: "best advice", prompt: "What's the best advice you've ever received?", emoji: "💡" },
-  { key: "last_show_binge", label: "last show binge", prompt: "What's the last show you binged?", emoji: "📺" },
-  { key: "favorite_sport_to_watch", label: "favorite sport to watch", prompt: "What's your favorite sport to watch?", emoji: "🏈" },
-  { key: "would_rather_skydive_or_scuba", label: "skydive or scuba", prompt: "Would you rather go skydiving or scuba diving?", emoji: "🪂" },
-  { key: "first_job", label: "first job", prompt: "What was your first job?", emoji: "💼" },
-  { key: "worst_cooking_disaster", label: "worst cooking disaster", prompt: "What's your worst cooking disaster?", emoji: "🔥" },
-  { key: "favorite_holiday", label: "favorite holiday", prompt: "What's your favorite holiday?", emoji: "🎄" },
-  { key: "spirit_animal", label: "spirit animal", prompt: "What's your spirit animal?", emoji: "🐺" },
-  { key: "dream_car", label: "dream car", prompt: "What's your dream car?", emoji: "🚗" },
-  { key: "current_emoji_crush", label: "current emoji crush", prompt: "What's your favorite emoji?", emoji: "😍" },
+  // Personal-fact questions (39)
+  { key: "first_concert",            label: "first concert",                  prompt: "What was the first concert you ever attended (artist name and venue)?", emoji: "🎤" },
+  { key: "best_concert",             label: "best concert",                   prompt: "What was the best concert you ever attended (artist name and venue)?", emoji: "🎶" },
+  { key: "favorite_food",            label: "favorite food",                  prompt: "What is your favorite food?", emoji: "🍕" },
+  { key: "weirdest_food_eaten",      label: "weirdest food eaten",            prompt: "What is the weirdest thing you've ever eaten?", emoji: "🦗" },
+  { key: "hidden_talent",            label: "hidden talent",                  prompt: "What is your hidden talent?", emoji: "✨" },
+  { key: "most_embarrassing_moment", label: "most embarrassing moment",       prompt: "What is your most embarrassing moment?", emoji: "😳" },
+  { key: "love_that_most_hate",      label: "thing you love that most hate",  prompt: "What is the thing you love that most people hate?", emoji: "💘" },
+  { key: "hate_that_most_love",      label: "thing you hate that most love",  prompt: "What is the thing you hate that most people love?", emoji: "🚫" },
+  { key: "greatest_fear",            label: "greatest fear",                  prompt: "What is your greatest fear?", emoji: "😱" },
+  { key: "favorite_musical_artist",  label: "favorite musical artist",        prompt: "Who is your favorite musical artist?", emoji: "🎵" },
+  { key: "favorite_movie",           label: "favorite movie",                 prompt: "What is your favorite movie?", emoji: "🎬" },
+  { key: "dinner_with_anyone",       label: "dinner with anyone",             prompt: "If you could have dinner with any person, living or dead, who would it be and why?", emoji: "🍽️" },
+  { key: "best_meal_ever",           label: "best meal ever",                 prompt: "What was your best meal ever?", emoji: "🥩" },
+  { key: "worst_meal_ever",          label: "worst meal ever",                prompt: "What was your worst meal ever?", emoji: "🤢" },
+  { key: "glad_you_did_it",          label: "glad you did it",                prompt: "What's something you didn't want to do, but you're glad you did?", emoji: "✅" },
+  { key: "wish_you_hadnt",           label: "wish you hadn't",                prompt: "What's something you really wanted to do, but wish you hadn't done?", emoji: "❌" },
+  { key: "ideal_friday_night",       label: "ideal Friday night",             prompt: "What is your ideal Friday night?", emoji: "🌃" },
+  { key: "spirit_animal",            label: "spirit animal",                  prompt: "What is your spirit animal and why?", emoji: "🐺" },
+  { key: "describe_yourself",        label: "describe yourself in one word",  prompt: "How would you describe yourself in one word?", emoji: "🪞" },
+  { key: "how_others_describe_you",  label: "how others describe you",        prompt: "How would others describe you in one word?", emoji: "👀" },
+  { key: "biggest_regret",           label: "biggest regret",                 prompt: "What is your biggest regret?", emoji: "😔" },
+  { key: "bucket_list_top",          label: "bucket list top item",           prompt: "What is your #1 bucket list item?", emoji: "🪣" },
+  { key: "guilty_pleasure",          label: "guilty pleasure",                prompt: "What is your guilty pleasure?", emoji: "😏" },
+  { key: "which_beatle",             label: "which Beatle",                   prompt: "Which Beatle would you be and why?", emoji: "🎸" },
+  { key: "biography_title",          label: "biography title",                prompt: "What would the title of your biography be?", emoji: "📖" },
+  { key: "dream_vacation",           label: "dream vacation",                 prompt: "What is your dream vacation?", emoji: "🏝️" },
+  { key: "nightmare_vacation",       label: "nightmare vacation",             prompt: "What is your nightmare vacation?", emoji: "🕳️" },
+  { key: "karaoke_song",             label: "go-to karaoke song",             prompt: "What is your go-to karaoke song?", emoji: "🎤" },
+  { key: "detention_story",          label: "detention story",                prompt: "Did you ever get detention in school? If so, what for?", emoji: "🖊️" },
+  { key: "arrested_story",           label: "arrested story",                 prompt: "Have you ever been arrested? If so, what for?", emoji: "🚓" },
+  { key: "superpower",               label: "superpower",                     prompt: "What's your superpower?", emoji: "🦸" },
+  { key: "kid_dream_job",            label: "kid dream job",                  prompt: "What did you want to be when you grew up?", emoji: "🚀" },
+  { key: "genie_wish",               label: "genie wish",                     prompt: "If a genie granted you one wish, what would you wish for?", emoji: "🧞" },
+  { key: "time_travel_destination",  label: "time travel destination",        prompt: "If you could travel through time, what era or day would you visit and why?", emoji: "⏳" },
+  { key: "universe_to_live_in",      label: "universe to live in",            prompt: "What literary, game or movie universe would you like to live in and why?", emoji: "🪄" },
+  { key: "terrible_job",             label: "job you'd be terrible at",       prompt: "What job would you be terrible at?", emoji: "😅" },
+  { key: "great_at_job",             label: "job you'd be great at",          prompt: "What job would you be really good at (that is not your current job)?", emoji: "💪" },
+  { key: "post_freeze_question",     label: "first question after cryogenic freeze", prompt: "What would be your first question after waking up from being cryogenically frozen for 100 years?", emoji: "❄️" },
+  { key: "embarrassing_style_trend", label: "embarrassing style trend",       prompt: "What's the most embarrassing style trend or look you ever rocked?", emoji: "👓" },
+
+  // Group-stat questions (3) — UI renders as text input today; chip picker is a follow-up.
+  { key: "early_bird_or_night_owl", label: "early bird or night owl", prompt: "Early bird or night owl?", emoji: "🌅" },
+  { key: "school_archetype",        label: "school archetype",        prompt: "Teacher's pet, class clown, or too cool for school?", emoji: "🎒" },
+  { key: "punctuality",             label: "punctuality",             prompt: "Always punctual or fashionably late?", emoji: "⏰" },
 ];
 
 /**
