@@ -5,7 +5,8 @@ import { Card, CardBody, CardHeader, CardTitle, GlowCard } from "@/components/ui
 import { Badge } from "@/components/ui/Badge";
 import { Marquee } from "@/components/ui/Marquee";
 import { LeaveButton } from "@/components/ui/LeaveButton";
-import { avatarFor } from "@/lib/family";
+import { FamilyMemberSelect } from "@/components/ui/Select";
+import { FAMILY, avatarFor } from "@/lib/family";
 import type { Player, DefaultFact } from "@/lib/supabase";
 import { cn, uuid } from "@/lib/utils";
 
@@ -23,6 +24,10 @@ interface LobbyProps {
   avatarOverrides: Record<string, string>;
   /** True if this player's facts were just loaded from their saved profile */
   prefilledFromProfile?: boolean;
+  /** Per-player count of facts saved to player_facts (from any device). */
+  playerFactCounts?: Record<string, number>;
+  /** Minimum answers per player required before the game can start. */
+  minFactsRequired?: number;
   isHost: boolean;
   onFactChange: (key: string, value: string) => void;
   onSetActive: (playerId: string) => void;
@@ -44,6 +49,8 @@ export function Lobby({
   defaultFacts,
   avatarOverrides,
   prefilledFromProfile = false,
+  playerFactCounts = {},
+  minFactsRequired = 10,
   isHost,
   onFactChange,
   onSetActive,
@@ -57,12 +64,31 @@ export function Lobby({
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [newName, setNewName] = useState("");
   const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   const activePlayer = myPlayers.find((p) => p.id === activePlayerId) ?? myPlayers[0];
   const allMyReady = myPlayers.every((p) => p.ready);
-  const everyoneReady = players.length >= 2 && players.every((p) => p.ready);
+
+  // Active player's answer count (drives Ready button + Add-player copy).
+  const activeFactsCount = activePlayer
+    ? Object.values(myFactsByPlayer[activePlayer.id] || facts || {}).filter((v) => v.trim()).length
+    : 0;
+  const activeHasEnough = activeFactsCount >= minFactsRequired;
+
+  // Players across the whole game who've saved < minFactsRequired facts.
+  const incomplete = players.filter(
+    (p) => (playerFactCounts[p.id] || 0) < minFactsRequired,
+  );
+  const incompleteNames = incomplete.map((p) => p.name);
+  const everyoneReady =
+    players.length >= 2 &&
+    players.every((p) => p.ready) &&
+    incomplete.length === 0;
+
+  // Family members not already on this device.
+  const myNames = new Set(myPlayers.map((p) => p.name));
+  const availableFamily = FAMILY.filter((m) => !myNames.has(m.fullName));
 
   async function handleReady() {
     setSaving(true);
@@ -82,13 +108,16 @@ export function Lobby({
     }
   }
 
-  async function handleAddPlayerSubmit() {
-    if (!newName.trim()) return;
+  async function handleAddPlayerSubmit(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
     setAdding(true);
+    setAddError(null);
     try {
-      await onAddPlayer(newName.trim());
-      setNewName("");
+      await onAddPlayer(trimmed);
       setShowAdd(false);
+    } catch (e) {
+      setAddError((e as Error)?.message ?? "Could not add player");
     } finally {
       setAdding(false);
     }
@@ -126,7 +155,12 @@ export function Lobby({
         {/* Players in the game */}
         <Card className="mb-4">
           <CardHeader>
-            <CardTitle>Players</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Players</CardTitle>
+              <span className="text-[11px] uppercase tracking-[0.18em] text-cream/50 font-bold">
+                Facts {minFactsRequired}+ to start
+              </span>
+            </div>
           </CardHeader>
           <CardBody>
             <div className="space-y-2">
@@ -134,6 +168,8 @@ export function Lobby({
                 {players.map((p) => {
                   const isMe = p.client_id === activePlayer?.client_id && p.id === activePlayer?.id;
                   const rosterEmoji = avatarFor(p.name, avatarOverrides);
+                  const count = playerFactCounts[p.id] ?? 0;
+                  const hasEnough = count >= minFactsRequired;
                   return (
                     <motion.div
                       key={p.id}
@@ -148,12 +184,32 @@ export function Lobby({
                     >
                       <span className="text-xl">{rosterEmoji}</span>
                       <span className="font-semibold text-foreground flex-1 truncate">{p.name}</span>
+                      <span
+                        className={cn(
+                          "text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-full",
+                          hasEnough
+                            ? "bg-cyan/15 text-cyan border border-cyan/40"
+                            : "bg-danger/15 text-danger border border-danger/40",
+                        )}
+                        title={`${count} of ${minFactsRequired} facts answered`}
+                      >
+                        {count}/{minFactsRequired}
+                      </span>
                       {p.is_host ? <Badge variant="gold">Host</Badge> : null}
-                      {p.ready ? <Badge variant="success">Ready</Badge> : <Badge variant="default">…</Badge>}
+                      {p.ready && hasEnough ? (
+                        <Badge variant="success">Ready</Badge>
+                      ) : (
+                        <Badge variant="default">…</Badge>
+                      )}
                     </motion.div>
                   );
                 })}
               </AnimatePresence>
+              {incomplete.length > 0 ? (
+                <p className="text-[11px] text-cream/50 mt-2 px-1">
+                  Waiting on {incompleteNames.length} of {incompleteNames.length === 1 ? "them" : "them"}: {incompleteNames.join(", ")}
+                </p>
+              ) : null}
             </div>
           </CardBody>
         </Card>
@@ -186,29 +242,44 @@ export function Lobby({
               {!showAdd ? (
                 <button
                   type="button"
-                  onClick={() => setShowAdd(true)}
+                  onClick={() => { setShowAdd(true); setAddError(null); }}
                   className="px-3 h-9 rounded-lg border-2 border-dashed border-gold/30 text-gold/70 hover:text-cyan hover:border-cyan text-sm font-semibold"
                 >
                   + Add player
                 </button>
-              ) : (
-                <div className="flex gap-2 w-full">
-                  <input
-                    autoFocus
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Name"
-                    className="flex-1 h-9 px-3 rounded-lg bg-stage border border-border text-foreground text-sm focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm"
-                  />
-                  <Button onClick={handleAddPlayerSubmit} disabled={adding || !newName.trim()} size="sm">
-                    {adding ? "Adding…" : "Add"}
-                  </Button>
-                  <Button onClick={() => { setShowAdd(false); setNewName(""); }} variant="ghost" size="sm">
-                    Cancel
-                  </Button>
-                </div>
-              )}
+              ) : null}
             </div>
+
+            {showAdd ? (
+              <div className="space-y-2 pt-2 border-t border-border/50">
+                <FamilyMemberSelect
+                  label="Pick a family member"
+                  value=""
+                  onChange={(name) => handleAddPlayerSubmit(name)}
+                  members={availableFamily}
+                  placeholder={
+                    adding
+                      ? "Adding…"
+                      : availableFamily.length === 0
+                        ? "All family members added"
+                        : "Pick a name to add them"
+                  }
+                  allowCustom
+                />
+                {addError ? (
+                  <p className="text-danger text-xs">⚠ {addError}</p>
+                ) : null}
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => { setShowAdd(false); setAddError(null); }}
+                    className="text-cream/60 hover:text-cream text-xs underline underline-offset-4"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </CardBody>
         </Card>
 
@@ -228,12 +299,30 @@ export function Lobby({
                     <CardTitle className="text-lg">
                       Your answers · <span className="text-gold">{activePlayer.name}</span>
                     </CardTitle>
-                    {prefilledFromProfile ? (
-                      <span className="text-[10px] uppercase tracking-[0.18em] text-cyan font-bold">
-                        ✓ from profile
+                    <div className="flex items-center gap-2">
+                      {prefilledFromProfile ? (
+                        <span className="text-[10px] uppercase tracking-[0.18em] text-cyan font-bold">
+                          ✓ from profile
+                        </span>
+                      ) : null}
+                      <span
+                        className={cn(
+                          "text-[10px] uppercase tracking-[0.18em] font-bold px-2 py-0.5 rounded-full",
+                          activeHasEnough
+                            ? "bg-cyan/15 text-cyan border border-cyan/40"
+                            : "bg-danger/15 text-danger border border-danger/40",
+                        )}
+                      >
+                        {activeFactsCount}/{minFactsRequired}
                       </span>
-                    ) : null}
+                    </div>
                   </div>
+                  {!activeHasEnough ? (
+                    <p className="text-danger text-xs mt-1 font-semibold">
+                      {activePlayer.name} needs {minFactsRequired - activeFactsCount} more{" "}
+                      {minFactsRequired - activeFactsCount === 1 ? "answer" : "answers"} before the game can start.
+                    </p>
+                  ) : null}
                   {defaultFacts.length === 0 ? (
                     <p className="text-cream/50 text-xs italic mt-1">
                       No questions in the pool yet. Add some in your profile.
@@ -279,19 +368,27 @@ export function Lobby({
                   ? "Starting…"
                   : everyoneReady
                     ? `Start Game (${players.length} players)`
-                    : players.length < 2
-                      ? "Need at least 2 players"
-                      : "Waiting for everyone to Ready"}
+                    : incomplete.length > 0
+                      ? `${incomplete.length} ${incomplete.length === 1 ? "player needs" : "players need"} ${minFactsRequired}+ answers`
+                      : players.length < 2
+                        ? "Need at least 2 players"
+                        : "Waiting for everyone to Ready"}
               </Button>
             </GlowCard>
           ) : (
             <GlowCard>
               <Button
                 onClick={handleReady}
-                disabled={saving || !!activePlayer?.ready}
+                disabled={saving || !!activePlayer?.ready || !activeHasEnough}
                 className="w-full"
               >
-                {saving ? "Saving…" : activePlayer?.ready ? "Ready!" : "I'm Ready"}
+                {saving
+                  ? "Saving…"
+                  : activePlayer?.ready
+                    ? "Ready!"
+                    : !activeHasEnough
+                      ? `Answer ${minFactsRequired - activeFactsCount} more to Ready`
+                      : "I'm Ready"}
               </Button>
             </GlowCard>
           )}

@@ -21,10 +21,14 @@ export async function getProfile(fullName: string): Promise<Profile | null> {
 export async function upsertProfile(
   fullName: string,
   facts: Record<string, string>,
+  validKeys?: Set<string>,
 ): Promise<void> {
   if (!fullName || !fullName.trim()) return;
 
-  const knownKeys = new Set(DEFAULT_FACTS.map((f) => f.key));
+  // Prefer the caller's live pool when provided. Fall back to the static
+  // seed list so older callers (and tests) keep working.
+  const knownKeys =
+    validKeys ?? new Set(DEFAULT_FACTS.map((f) => f.key));
   const cleanFacts: Record<string, string> = {};
   for (const [k, v] of Object.entries(facts)) {
     const trimmed = (v || "").trim();

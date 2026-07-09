@@ -24,6 +24,9 @@ interface Session {
 
 const SESSION_KEY = "***";
 
+/** Per-player minimum answers required before the game can start. */
+const MIN_FACTS_REQUIRED = 10;
+
 function loadSession(): Session | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -55,6 +58,9 @@ export default function App() {
   // can add / edit / delete rows).
   const [defaultFacts, setDefaultFacts] = useState<import("@/lib/supabase").DefaultFact[]>([]);
   const [avatarOverrides, setAvatarOverrides] = useState<Record<string, string>>({});
+  // Live fact-count per player. Refreshed when the player list changes.
+  // Lobby uses this to disable Start until everyone has 10+ answers.
+  const [playerFactCounts, setPlayerFactCounts] = useState<Record<string, number>>({});
 
   const clientIdRef = useRef(session?.clientId || uuid());
 
@@ -77,10 +83,45 @@ export default function App() {
     setDefaultFacts(list);
   }, []);
 
+  // Refresh fact counts for every player in the current game. Called when
+  // the player list changes (someone joins/leaves) and on demand.
+  const refreshPlayerFactCounts = useCallback(async () => {
+    if (!game?.id) {
+      setPlayerFactCounts({});
+      return;
+    }
+    if (players.length === 0) {
+      setPlayerFactCounts({});
+      return;
+    }
+    const ids = players.map((p) => p.id);
+    const { data, error } = await supabase
+      .from("player_facts")
+      .select("player_id")
+      .in("player_id", ids);
+    if (error) {
+      console.warn("Failed to fetch player_facts counts", error);
+      return;
+    }
+    const counts: Record<string, number> = {};
+    for (const id of ids) counts[id] = 0;
+    for (const row of data ?? []) {
+      counts[(row as { player_id: string }).player_id] =
+        (counts[(row as { player_id: string }).player_id] || 0) + 1;
+    }
+    setPlayerFactCounts(counts);
+  }, [game?.id, players]);
+
   // Load default facts once on app startup so lobby + profile have them ready.
   useEffect(() => {
     refreshDefaultFacts();
   }, [refreshDefaultFacts]);
+
+  // Keep per-player fact counts in sync with the current player roster.
+  // Refreshes on join/leave and after handleReady writes new facts.
+  useEffect(() => {
+    refreshPlayerFactCounts();
+  }, [refreshPlayerFactCounts]);
 
   // ---- Realtime subscriptions ----
   useEffect(() => {
@@ -355,18 +396,31 @@ export default function App() {
     if (error) throw new Error(error.message);
   }, []);
 
+  const validKeysSet = useMemo(
+    () => new Set(defaultFacts.map((f) => f.key)),
+    [defaultFacts],
+  );
+
   const handleReady = useCallback(async () => {
     for (const p of myPlayers) {
       const pf = factsByPlayer[p.id] || {};
+      const filled = Object.values(pf).filter((v) => v.trim()).length;
+      if (filled < MIN_FACTS_REQUIRED) {
+        throw new Error(
+          `${p.name} only has ${filled} of ${MIN_FACTS_REQUIRED} answers. Fill in at least ${MIN_FACTS_REQUIRED} before marking Ready.`,
+        );
+      }
       await persistFacts(p.id, pf);
-      await upsertProfile(p.name, pf);
+      await upsertProfile(p.name, pf, validKeysSet);
       const { error } = await supabase
         .from("players")
         .update({ ready: true })
         .eq("id", p.id);
       if (error) throw new Error(error.message);
     }
-  }, [myPlayers, factsByPlayer, persistFacts]);
+    // Refresh counts so the host sees the new totals immediately.
+    refreshPlayerFactCounts();
+  }, [myPlayers, factsByPlayer, persistFacts, validKeysSet, refreshPlayerFactCounts]);
 
   const handleStart = useCallback(async () => {
     if (!game || !session?.hostToken) throw new Error("Only the host can start");
@@ -374,7 +428,7 @@ export default function App() {
     if (me) {
       const pf = factsByPlayer[me.id] || {};
       await persistFacts(me.id, pf);
-      await upsertProfile(me.name, pf);
+      await upsertProfile(me.name, pf, validKeysSet);
     }
 
     const [{ data: playersAll }, { data: playerIds }] = await Promise.all([
@@ -387,6 +441,30 @@ export default function App() {
       .from("player_facts")
       .select("*")
       .in("player_id", ids);
+
+    // Authoritative validation: every player needs MIN_FACTS_REQUIRED+ facts
+    // before the game can start. The Lobby button is also gated, but the DB
+    // is the source of truth so two players can race and the loser sees the
+    // same error.
+    if (playersAll && playersAll.length > 0) {
+      const counts: Record<string, number> = {};
+      for (const id of ids) counts[id] = 0;
+      for (const f of factsAll ?? []) {
+        counts[(f as { player_id: string }).player_id] =
+          (counts[(f as { player_id: string }).player_id] || 0) + 1;
+      }
+      const incomplete = (playersAll as Player[]).filter(
+        (p) => (counts[p.id] || 0) < MIN_FACTS_REQUIRED,
+      );
+      if (incomplete.length > 0) {
+        const detail = incomplete
+          .map((p) => `${p.name} (${counts[p.id] || 0}/${MIN_FACTS_REQUIRED})`)
+          .join(", ");
+        throw new Error(
+          `Each player needs at least ${MIN_FACTS_REQUIRED} answers before starting. Missing: ${detail}`,
+        );
+      }
+    }
 
     const generated = generateQuestions({
       gameId: game.id,
@@ -413,7 +491,7 @@ export default function App() {
       .eq("id", game.id)
       .eq("host_token", session.hostToken);
     if (gErr) throw new Error(gErr.message);
-  }, [game, session?.hostToken, me, factsByPlayer, persistFacts, defaultFacts]);
+  }, [game, session?.hostToken, me, factsByPlayer, persistFacts, defaultFacts, validKeysSet]);
 
   const handleAnswer = useCallback(
     async (optionIndex: number) => {
@@ -614,6 +692,8 @@ export default function App() {
         defaultFacts={defaultFacts}
         avatarOverrides={avatarOverrides}
         prefilledFromProfile={prefilledFromProfile.has(me.id)}
+        playerFactCounts={playerFactCounts}
+        minFactsRequired={MIN_FACTS_REQUIRED}
         onFactChange={handleFactChange}
         onSetActive={handleSetActivePlayer}
         onAddPlayer={handleAddPlayer}

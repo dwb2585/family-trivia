@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Marquee } from "@/components/ui/Marquee";
@@ -48,6 +48,9 @@ export function ProfileScreen({
   const [avatarEmoji, setAvatarEmoji] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingNow, setSavingNow] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [addingFact, setAddingFact] = useState(false);
   const [editingFactId, setEditingFactId] = useState<string | null>(null);
@@ -84,29 +87,73 @@ export function ProfileScreen({
     };
   }, [name, defaultFacts]);
 
+  // Number of answers the user has actually entered (non-empty, in-pool).
+  const answeredCount = useMemo(
+    () => {
+      const validKeys = new Set(defaultFacts.map((f) => f.key));
+      let n = 0;
+      for (const f of defaultFacts) {
+        if ((answers[f.key] || "").trim() && validKeys.has(f.key)) n += 1;
+      }
+      return n;
+    },
+    [answers, defaultFacts],
+  );
+
   // Debounced save for answers (only the keys that match the current pool).
   const saveTimerRef = useRef<number | null>(null);
+  const performSave = useCallback(
+    async (next: Record<string, string>) => {
+      // Only persist keys that are still in the current pool — others
+      // (deleted facts) get dropped from the profile so they don't sneak
+      // back into a future game.
+      const validKeys = new Set(defaultFacts.map((f) => f.key));
+      const clean: Record<string, string> = {};
+      for (const [k, v] of Object.entries(next)) {
+        const trimmed = (v || "").trim();
+        if (trimmed && validKeys.has(k)) clean[k] = trimmed;
+      }
+      try {
+        await upsertProfile(name, clean, validKeys);
+        setLastSavedAt(new Date());
+        setSaveError(null);
+      } catch (e) {
+        setSaveError((e as Error)?.message ?? "Could not save");
+      }
+    },
+    [name, defaultFacts],
+  );
+
   const scheduleSaveAnswers = useCallback(
     (next: Record<string, string>) => {
       if (!name.trim()) return;
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
       setSaving(true);
       saveTimerRef.current = window.setTimeout(async () => {
-        // Only persist keys that are still in the current pool — others
-        // (deleted facts) get dropped from the profile so they don't sneak
-        // back into a future game.
-        const knownKeys = new Set(defaultFacts.map((f) => f.key));
-        const clean: Record<string, string> = {};
-        for (const [k, v] of Object.entries(next)) {
-          const trimmed = (v || "").trim();
-          if (trimmed && knownKeys.has(k)) clean[k] = trimmed;
-        }
-        await upsertProfile(name, clean);
+        await performSave(next);
         setSaving(false);
       }, 600);
     },
-    [name, defaultFacts],
+    [name, performSave],
   );
+
+  // Explicit Save button — flushes any pending debounced save first so we
+  // never lose the user's intent, then writes immediately.
+  const handleSaveAnswers = useCallback(async () => {
+    if (!name.trim()) return;
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    setSavingNow(true);
+    setSaving(true);
+    try {
+      await performSave(answers);
+    } finally {
+      setSaving(false);
+      setSavingNow(false);
+    }
+  }, [name, answers, performSave]);
 
   function handleAnswerChange(key: string, value: string) {
     const next = { ...answers, [key]: value };
@@ -157,7 +204,11 @@ export function ProfileScreen({
     <div className="relative min-h-screen flex flex-col px-4 py-6 overflow-hidden bg-grid">
       <div className="bg-aurora opacity-50" />
 
-      <LeaveButton onLeave={onBack} confirmMessage="Leave without saving further changes?" />
+      <LeaveButton
+        onLeave={onBack}
+        title="Leaving profile?"
+        confirmMessage="Any unsaved edits to your answers will be lost."
+      />
 
       <div className="relative z-10 w-full max-w-2xl mx-auto flex-1 flex flex-col">
         <Marquee className="mb-4" />
@@ -206,8 +257,8 @@ export function ProfileScreen({
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-lg">Default Questions</CardTitle>
-                    <span className="text-xs text-cream/50">
-                      {saving ? "Saving…" : Object.values(answers).some((v) => v.trim()) ? "✓ Saved" : ""}
+                    <span className="text-[11px] uppercase tracking-[0.18em] text-cream/50 font-bold">
+                      {answeredCount} of {defaultFacts.length} answered
                     </span>
                   </div>
                   <p className="text-foreground/60 text-xs mt-1">
@@ -223,6 +274,33 @@ export function ProfileScreen({
                       onChange={(v) => handleAnswerChange(fact.key, v)}
                     />
                   ))}
+
+                  <div className="pt-2 space-y-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveAnswers}
+                      disabled={!name.trim() || savingNow || saving || answeredCount === 0}
+                      className={cn(
+                        "w-full h-12 rounded-xl font-display tracking-wide text-base",
+                        "bg-gradient-to-br from-cyan to-violet text-stage",
+                        "shadow-cyan-glow-sm btn-3d",
+                        "disabled:opacity-40 disabled:cursor-not-allowed",
+                      )}
+                    >
+                      {savingNow || saving ? "Saving…" : "Save answers"}
+                    </button>
+                    <div className="flex items-center justify-center gap-1.5 text-[11px] uppercase tracking-[0.18em] font-bold min-h-[16px]">
+                      {savingNow || saving ? (
+                        <span className="text-cream/50">Saving…</span>
+                      ) : saveError ? (
+                        <span className="text-danger">⚠ {saveError}</span>
+                      ) : lastSavedAt ? (
+                        <span className="text-cyan">
+                          ✓ Saved at {lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
                 </CardBody>
               </Card>
 

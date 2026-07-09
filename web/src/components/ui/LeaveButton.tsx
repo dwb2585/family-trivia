@@ -4,6 +4,9 @@ import { cn } from "@/lib/utils";
 
 interface LeaveButtonProps {
   onLeave: () => void;
+  /** Heading shown in the confirm modal. Defaults to "Leave the game?" */
+  title?: string;
+  /** Body text below the heading. Defaults to "Leave the game?" */
   confirmMessage?: string;
   warning?: string;
   className?: string;
@@ -15,6 +18,7 @@ interface LeaveButtonProps {
  */
 export function LeaveButton({
   onLeave,
+  title = "Leave the game?",
   confirmMessage = "Leave the game?",
   warning,
   className,
@@ -59,7 +63,7 @@ export function LeaveButton({
               className="w-full max-w-sm surface-card p-6 shadow-cyan-glow"
             >
               <h3 className="font-display text-2xl tracking-wide mb-2 text-center">
-                Leave the game?
+                {title}
               </h3>
               <p className="text-foreground/80 text-center mb-1">
                 {confirmMessage}
