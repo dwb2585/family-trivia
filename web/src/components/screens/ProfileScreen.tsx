@@ -237,24 +237,6 @@ export function ProfileScreen({
             <>
               <Card className="mb-4">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">Your avatar</CardTitle>
-                  <p className="text-foreground/60 text-xs mt-1">
-                    Shown next to your name in lobbies, scoreboards, and reveals.
-                  </p>
-                </CardHeader>
-                <CardBody className="pt-2">
-                  <AvatarPicker
-                    current={avatarEmoji}
-                    rosterDefault={
-                      FAMILY.find((m) => m.fullName === name)?.emoji ?? ""
-                    }
-                    onPick={handleAvatarPick}
-                  />
-                </CardBody>
-              </Card>
-
-              <Card className="mb-4">
-                <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-lg">Default Questions</CardTitle>
                     <span className="text-[11px] uppercase tracking-[0.18em] text-cream/50 font-bold">
@@ -266,6 +248,33 @@ export function ProfileScreen({
                   </p>
                 </CardHeader>
                 <CardBody className="pt-2 space-y-3">
+                  <div className="pb-1">
+                    <button
+                      type="button"
+                      onClick={handleSaveAnswers}
+                      disabled={!name.trim() || savingNow || saving || answeredCount === 0}
+                      className={cn(
+                        "w-full h-12 rounded-xl font-display tracking-wide text-base",
+                        "bg-gradient-to-br from-cyan to-violet text-stage",
+                        "shadow-cyan-glow-sm btn-3d",
+                        "disabled:opacity-40 disabled:cursor-not-allowed",
+                      )}
+                    >
+                      {savingNow || saving ? "Saving…" : "Save answers"}
+                    </button>
+                    <div className="flex items-center justify-center gap-1.5 text-[11px] uppercase tracking-[0.18em] font-bold min-h-[16px] mt-1.5">
+                      {savingNow || saving ? (
+                        <span className="text-cream/50">Saving…</span>
+                      ) : saveError ? (
+                        <span className="text-danger">⚠ {saveError}</span>
+                      ) : lastSavedAt ? (
+                        <span className="text-cyan">
+                          ✓ Saved at {lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+
                   {defaultFacts.map((fact) => (
                     <DefaultAnswerField
                       key={fact.id}
@@ -360,6 +369,24 @@ export function ProfileScreen({
                       Add a question
                     </button>
                   )}
+                </CardBody>
+              </Card>
+
+              <Card className="mb-4">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">Your avatar</CardTitle>
+                  <p className="text-foreground/60 text-xs mt-1">
+                    Shown next to your name in lobbies, scoreboards, and reveals.
+                  </p>
+                </CardHeader>
+                <CardBody className="pt-2">
+                  <AvatarPicker
+                    current={avatarEmoji}
+                    rosterDefault={
+                      FAMILY.find((m) => m.fullName === name)?.emoji ?? ""
+                    }
+                    onPick={handleAvatarPick}
+                  />
                 </CardBody>
               </Card>
 

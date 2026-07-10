@@ -69,6 +69,12 @@ export function Lobby({
 
   const activePlayer = myPlayers.find((p) => p.id === activePlayerId) ?? myPlayers[0];
   const allMyReady = myPlayers.every((p) => p.ready);
+  const multipleOnDevice = myPlayers.length > 1;
+  // Find the next player on this device who isn't yet ready — used for the
+  // "Pass to [name]" CTA after the current person marks themselves ready.
+  const nextLocalPlayer = multipleOnDevice
+    ? myPlayers.find((p) => p.id !== activePlayer?.id && !p.ready)
+    : null;
 
   // Active player's answer count (drives Ready button + Add-player copy).
   const activeFactsCount = activePlayer
@@ -219,26 +225,55 @@ export function Lobby({
           <CardHeader>
             <CardTitle>On this device</CardTitle>
             <p className="text-foreground/60 text-xs mt-1">
-              Add another family member on this device, or switch who's currently playing.
+              {multipleOnDevice
+                ? `Pass the phone between ${myPlayers.length} players. Tap a name to switch whose answers are showing.`
+                : "Add another family member on this device, or switch who's currently playing."}
             </p>
           </CardHeader>
           <CardBody className="pt-2">
+            {multipleOnDevice && activePlayer ? (
+              <div className="mb-3 rounded-xl bg-gradient-to-br from-cyan/15 to-violet/15 border border-cyan/30 p-3 flex items-center gap-3">
+                <span className="text-3xl shrink-0">
+                  {avatarFor(activePlayer.name, avatarOverrides)}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-cyan font-bold">
+                    Now filling in
+                  </div>
+                  <div className="text-base font-bold text-foreground truncate">
+                    {activePlayer.name}
+                  </div>
+                </div>
+                {activePlayer.ready ? (
+                  <Badge variant="success">Ready</Badge>
+                ) : null}
+              </div>
+            ) : null}
             <div className="flex flex-wrap gap-2 mb-3">
-              {myPlayers.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => onSetActive(p.id)}
-                  className={cn(
-                    "px-3 h-9 rounded-lg text-sm font-bold transition-colors",
-                    p.id === activePlayer?.id
-                      ? "bg-gradient-to-br from-cyan to-violet text-stage"
-                      : "bg-stage/60 text-cream/70 hover:text-cyan border border-border",
-                  )}
-                >
-                  {avatarFor(p.name, avatarOverrides)} {p.name}
-                </button>
-              ))}
+              {myPlayers.map((p) => {
+                const isActive = p.id === activePlayer?.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => onSetActive(p.id)}
+                    title={
+                      isActive
+                        ? `${p.name} is active`
+                        : `Switch to ${p.name}`
+                    }
+                    className={cn(
+                      "px-3 h-9 rounded-lg text-sm font-bold transition-all",
+                      isActive
+                        ? "bg-gradient-to-br from-cyan to-violet text-stage ring-2 ring-cyan ring-offset-2 ring-offset-stage shadow-cyan-glow-sm"
+                        : "bg-stage/60 text-cream/70 hover:text-cyan border border-border",
+                    )}
+                  >
+                    {avatarFor(p.name, avatarOverrides)} {p.name}
+                    {p.ready ? <span className="ml-1.5">✓</span> : null}
+                  </button>
+                );
+              })}
               {!showAdd ? (
                 <button
                   type="button"
@@ -376,21 +411,35 @@ export function Lobby({
               </Button>
             </GlowCard>
           ) : (
-            <GlowCard>
-              <Button
-                onClick={handleReady}
-                disabled={saving || !!activePlayer?.ready || !activeHasEnough}
-                className="w-full"
-              >
-                {saving
-                  ? "Saving…"
-                  : activePlayer?.ready
-                    ? "Ready!"
-                    : !activeHasEnough
-                      ? `Answer ${minFactsRequired - activeFactsCount} more to Ready`
-                      : "I'm Ready"}
-              </Button>
-            </GlowCard>
+            <div className="space-y-2">
+              {multipleOnDevice && activePlayer?.ready && nextLocalPlayer ? (
+                <GlowCard>
+                  <Button
+                    onClick={() => onSetActive(nextLocalPlayer.id)}
+                    className="w-full"
+                  >
+                    Pass the phone → {avatarFor(nextLocalPlayer.name, avatarOverrides)} {nextLocalPlayer.name}
+                  </Button>
+                </GlowCard>
+              ) : null}
+              <GlowCard>
+                <Button
+                  onClick={handleReady}
+                  disabled={saving || !!activePlayer?.ready || !activeHasEnough}
+                  className="w-full"
+                >
+                  {saving
+                    ? "Saving…"
+                    : activePlayer?.ready
+                      ? multipleOnDevice && nextLocalPlayer
+                        ? `Waiting for ${nextLocalPlayer.name}…`
+                        : "Ready!"
+                      : !activeHasEnough
+                        ? `Answer ${minFactsRequired - activeFactsCount} more to Ready`
+                        : "I'm Ready"}
+                </Button>
+              </GlowCard>
+            </div>
           )}
         </div>
 
