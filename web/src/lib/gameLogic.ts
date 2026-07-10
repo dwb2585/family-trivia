@@ -1,6 +1,7 @@
 import type { Player, PlayerFact, Question } from "./supabase";
 import type { DefaultFact } from "./supabase";
 import { shuffle } from "./utils";
+import { pickDistractors as pickDistractorsRich } from "./facts";
 
 export interface GenerateInput {
   gameId: string;
@@ -50,30 +51,12 @@ function promptFor(
 }
 
 /** Same-category distractor fallback bank when answer pool is thin. */
-const FALLBACK_DISTRACTORS: Record<string, string[]> = {
-  favorite_movie: [
-    "Jurassic Park", "The Lion King", "Spirited Away", "Mad Max: Fury Road",
-    "Inception", "The Princess Bride", "Back to the Future", "Up",
-  ],
-  favorite_season: ["Spring", "Summer", "Autumn", "Winter"],
-  favorite_food: ["Pizza", "Tacos", "Sushi", "Pasta", "Burgers", "Curry", "Salad", "Ramen"],
-  favorite_song: ["Bohemian Rhapsody", "Don't Stop Believin'", "Imagine", "Hey Jude"],
-  motto: ["Be kind", "Carpe diem", "Stay curious", "Live and let live"],
-};
-
-function pickDistractors(
-  factKey: string,
-  correctValue: string,
-  otherAnswersSameKey: string[],
-): string[] {
-  const lowerCorrect = correctValue.trim().toLowerCase();
-  const bank = FALLBACK_DISTRACTORS[factKey] ?? [];
-  const pool = [
-    ...otherAnswersSameKey.filter((v) => v.trim().toLowerCase() !== lowerCorrect),
-    ...bank.filter((v) => v.toLowerCase() !== lowerCorrect),
-  ];
-  return shuffle(pool).slice(0, 3);
-}
+// `pickDistractors` is imported from `./facts` and uses the rich
+// FACT_DISTRACTORS bank there. The thin in-file FALLBACK_DISTRACTORS
+// below is retained only as a *last* resort for fact_keys that don't
+// have an entry in FACT_DISTRACTORS and have no same-key answers from
+// other players in the game — we want every multiple-choice question
+// to render with 3 distractors whenever possible.
 
 /**
  * Build trivia questions from players' facts against the current
@@ -136,7 +119,20 @@ export function generateQuestions({
         const otherPlayersSameKey = facts
           .filter((f) => f.fact_key === fact.fact_key && f.player_id !== subject.id)
           .map((f) => f.fact_value);
-        const distractors = pickDistractors(fact.fact_key, fact.fact_value, otherPlayersSameKey);
+        // Cross-category fallback pool: every other fact value across
+        // every player in the game (excluding the correct answer). Used
+        // by the rich picker if the FACT_DISTRACTORS bank is empty AND
+        // no other players answered this key — guarantees the question
+        // still renders with 3+ plausible-ish options.
+        const otherFactValuesAcrossGame = facts
+          .filter((f) => f.player_id !== subject.id)
+          .map((f) => f.fact_value);
+        const distractors = pickDistractorsRich(
+          fact.fact_value,
+          fact.fact_key,
+          otherPlayersSameKey,
+          otherFactValuesAcrossGame,
+        );
 
         const options = shuffle([fact.fact_value, ...distractors]);
         const correctIndex = options.indexOf(fact.fact_value);

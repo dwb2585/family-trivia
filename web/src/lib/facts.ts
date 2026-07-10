@@ -324,6 +324,31 @@ export const FACT_DISTRACTORS: Record<string, string[]> = {
     "Justin Bieber", "One Direction", "Drake", "Kendrick Lamar",
     "Bon Jovi", "Journey", "Queen", "Def Leppard", "Aerosmith",
   ],
+  favorite_musical_artist: [
+    // Pop / contemporary
+    "Taylor Swift", "Beyoncé", "Adele", "Ed Sheeran", "Bruno Mars",
+    "Justin Bieber", "Ariana Grande", "Billie Eilish", "Lady Gaga",
+    "Olivia Rodrigo", "Harry Styles", "Dua Lipa", "Lizzo",
+    "Rihanna", "Katy Perry", "Miley Cyrus", "Selena Gomez",
+    "Shawn Mendes", "Camila Cabello", "Sam Smith",
+    // Hip-hop / R&B
+    "Drake", "Kendrick Lamar", "J. Cole", "Travis Scott", "Post Malone",
+    "The Weeknd", "Cardi B", "Megan Thee Stallion", "Nicki Minaj",
+    "Doja Cat", "SZA", "Future", "Lil Baby", "21 Savage",
+    "Eminem", "Jay-Z", "Kanye West", "Bad Bunny",
+    // Rock / legacy
+    "The Beatles", "The Rolling Stones", "Led Zeppelin", "Pink Floyd",
+    "Queen", "Fleetwood Mac", "Bruce Springsteen", "Elton John",
+    "Billy Joel", "AC/DC", "Aerosmith", "Bon Jovi", "Foo Fighters",
+    "Coldplay", "U2", "Imagine Dragons", "Maroon 5",
+    "Arctic Monkeys", "Tame Impala", "Hozier",
+    // Country / other
+    "Morgan Wallen", "Luke Combs", "Carrie Underwood", "Chris Stapleton",
+    "Luke Bryan", "Thomas Rhett",
+    // Legacy / icons
+    "Michael Jackson", "Madonna", "Prince", "Stevie Wonder",
+    "Mariah Carey", "Whitney Houston", "Frank Sinatra",
+  ],
   guilty_pleasure_song: [
     "Mambo No. 5", "Baby Shark", "Ice Ice Baby", "Macarena",
     "Who Let the Dogs Out", "Barbie Girl", "MMMBop", "Livin' La Vida Loca",
@@ -535,15 +560,25 @@ export const FACT_DISTRACTORS: Record<string, string[]> = {
  *   1. Random entries from the FACT_DISTRACTORS bank for this fact_key
  *      (real movies, real places, etc. — most natural-sounding wrong answers)
  *   2. Other players' same-key answers (also same-category, real)
- *   3. Stop if we hit 3, no fallback across categories
+ *   3. Cross-category fallback: any other fact value in the game
+ *      (different category, but at least the question renders with 3+ options)
  *
- * If we can't get 3, the caller gets fewer distractors — that's fine,
- * the question still renders with however many we have.
+ * We aim for 3 distractors; the caller renders whatever we return plus the
+ * correct answer. If we genuinely can't get 3 (game is tiny), the question
+ * renders with fewer options rather than failing.
  */
 export function pickDistractors(
   correctValue: string,
   factKey: string,
   otherPlayersSameKey: string[],
+  /**
+   * Optional cross-category fallback pool: every other fact value across
+   * every player in the game (excluding `correctValue`). Used when the bank
+   * is empty AND no other players answered this key. Distractors from this
+   * pool are visibly cross-category ("Moana" on a favorite-musician question),
+   * which is still better than showing a 2-option question.
+   */
+  otherFactValuesAcrossGame?: string[],
 ): string[] {
   const distractors: string[] = [];
   const seen = new Set<string>([correctValue.trim().toLowerCase()]);
@@ -567,6 +602,15 @@ export function pickDistractors(
   for (const o of shuffle(otherPlayersSameKey)) {
     if (distractors.length >= 3) break;
     tryAdd(o);
+  }
+
+  // 3. Cross-category fallback so the question always has 3+ options
+  // even for fact_keys with no bank and no same-key answers.
+  if (distractors.length < 3 && otherFactValuesAcrossGame?.length) {
+    for (const o of shuffle(otherFactValuesAcrossGame)) {
+      if (distractors.length >= 3) break;
+      tryAdd(o);
+    }
   }
 
   return distractors;
