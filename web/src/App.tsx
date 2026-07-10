@@ -51,7 +51,7 @@ export default function App() {
   // Narrator overlay line queue — populated on phase transitions.
   // Consumed by <NarratorOverlay> mounted once near the root.
   const [narratorLines, setNarratorLines] = useState<{
-    kind: "intro" | "outro" | "reaction" | "score_summary" | "tiebreak_tease" | "commentary" | "read_question";
+    kind: "intro" | "outro" | "reaction" | "score_summary" | "tiebreak_tease" | "commentary" | "read_question" | "subject_intro";
     context: Record<string, unknown>;
     fallback: string;
     autoDismissMs?: number;
@@ -806,8 +806,10 @@ export default function App() {
   );
 
   // ---- Narrator: auto-fire lines on game state transitions ----
-  // Auto-narration when a new question appears. Fire `read_question` so
-  // the host reads the question aloud (verbatim, with a tiny intro flourish).
+  // Auto-narration when a new question appears. If the LOCAL player is the
+  // subject of the question, fire `subject_intro` (spotlight on them) — they
+  // already know the answer and don't need it read aloud. Otherwise fire
+  // `read_question` so the host announces the question to the guesser.
   // Use a ref keyed on question id so we never re-fire for the same question.
   const readQuestionFor = useRef<string | null>(null);
   useEffect(() => {
@@ -815,10 +817,11 @@ export default function App() {
     if (readQuestionFor.current === currentQuestion.id) return;
     readQuestionFor.current = currentQuestion.id;
     const subject = players.find((p) => p.id === currentQuestion.subject_player_id);
+    const isLocalSubject = !!me && currentQuestion.subject_player_id === me.id;
     setNarratorLines((prev) => [
       ...prev,
       {
-        kind: "read_question",
+        kind: isLocalSubject ? "subject_intro" : "read_question",
         context: {
           questionText: currentQuestion.question_text,
           subjectName: subject?.name,
@@ -826,12 +829,14 @@ export default function App() {
           totalRounds: game?.total_questions ?? 5,
           players: players.map((p) => ({ name: p.name, score: p.score })),
         },
-        fallback: `Here's the next one: ${currentQuestion.question_text}`,
+        fallback: isLocalSubject
+          ? `Spotlight's on you, ${subject?.name ?? "friend"} — let's see if they know you!`
+          : `Here's the next one: ${currentQuestion.question_text}`,
         // Don't autoDismiss — let gameplay take the floor after audio ends.
         autoDismissMs: 0,
       },
     ]);
-  }, [currentQuestion, phase, game, players]);
+  }, [currentQuestion, phase, game, players, me]);
 
   // Tiny ack when a player submits an answer. Detection watches answer
   // count rising between renders.

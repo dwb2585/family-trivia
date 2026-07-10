@@ -27,7 +27,7 @@ const MINIMAX_BASE = Deno.env.get("MINIMAX_BASE_URL") || "https://api.minimax.io
 const MINIMAX_API_KEY = Deno.env.get("MINIMAX_API_KEY");
 const MINIMAX_MODEL = Deno.env.get("MINIMAX_MODEL") || "MiniMax-M3";
 
-type Kind = "intro" | "outro" | "reaction" | "score_summary" | "tiebreak_tease" | "commentary" | "read_question";
+type Kind = "intro" | "outro" | "reaction" | "score_summary" | "tiebreak_tease" | "commentary" | "read_question" | "subject_intro";
 
 interface Player {
   name: string;
@@ -192,6 +192,20 @@ function buildUserPrompt(kind: Kind, ctx: Context): string {
       ].filter(Boolean).join("\n");
     }
 
+    case "subject_intro": {
+      // The host is addressing the SUBJECT of the current question (the
+      // player whose answer is being guessed). Don't read the question —
+      // the subject already knows the answer. Instead, hype them up:
+      // spotlight moment, look smug, lean into the audience.
+      return [
+        `A question just appeared about ${ctx.subjectName ?? "one of the players"} and you are talking DIRECTLY TO THEM.`,
+        `Your line speaks to ${ctx.subjectName ?? "them"} in second person — they're the celebrity in this moment.`,
+        `Vibe: spotlight's on you, show 'em what you've got, no spoilers of course.`,
+        ctx.questionText ? `For your reference, the question topic is: "${ctx.questionText}" — but you must NOT quote it back to them or hint at the answer.` : ``,
+        `One short sentence. Address them by name. Cheeky and warm.`,
+      ].filter(Boolean).join("\n");
+    }
+
     default:
       return `Deliver a short, in-character host line.`;
   }
@@ -224,6 +238,9 @@ const FALLBACKS: Record<Kind, string[]> = {
   ],
   read_question: [
     "Here's the next one — listen up.",
+  ],
+  subject_intro: [
+    "Spotlight's on you — let's see if they really know you.",
   ],
 };
 
@@ -320,7 +337,7 @@ Deno.serve(async (req: Request) => {
 
   const kind = body.kind;
   const ctx = body.context;
-  const validKinds: Kind[] = ["intro", "outro", "reaction", "score_summary", "tiebreak_tease", "commentary", "read_question"];
+  const validKinds: Kind[] = ["intro", "outro", "reaction", "score_summary", "tiebreak_tease", "commentary", "read_question", "subject_intro"];
   if (!kind || !validKinds.includes(kind)) {
     return new Response(
       JSON.stringify({ error: `Invalid kind. Must be one of: ${validKinds.join(", ")}` }),
