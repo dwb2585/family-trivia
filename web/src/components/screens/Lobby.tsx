@@ -108,10 +108,19 @@ export function Lobby({
   };
   const incomplete = players.filter((p) => countFor(p) < minFactsRequired);
   const incompleteNames = incomplete.map((p) => p.name);
+  // Start gates:
+  //  - need >= 2 players total
+  //  - everyone has >= minFactsRequired facts (incomplete.length === 0)
+  //  - players on *other* devices must have flipped Ready (their signal that
+  //    they're done typing). Players on *this* device are the host's
+  //    responsibility — we don't require them to also tap Ready, the host
+  //    can go straight to Start after filling in 10+ for everyone on the
+  //    pass-the-phone flow.
+  const myClientId = activePlayer?.client_id ?? null;
   const everyoneReady =
     players.length >= 2 &&
-    players.every((p) => p.ready) &&
-    incomplete.length === 0;
+    incomplete.length === 0 &&
+    players.every((p) => p.client_id === myClientId || p.ready);
 
   // Family members not already on this device.
   const myNames = new Set(myPlayers.map((p) => p.name));
@@ -500,7 +509,17 @@ export function Lobby({
                       ? `${incomplete.length} ${incomplete.length === 1 ? "player needs" : "players need"} ${minFactsRequired}+ answers`
                       : players.length < 2
                         ? "Need at least 2 players"
-                        : "Waiting for everyone to Ready"}
+                        : (() => {
+                            // Only remote players are blocking — name them
+                            // so the host knows who they're waiting on.
+                            const waiting = players.filter(
+                              (p) => p.client_id !== myClientId && !p.ready,
+                            );
+                            if (waiting.length === 0)
+                              return "Waiting for everyone to Ready";
+                            const names = waiting.map((p) => p.name).join(", ");
+                            return `Waiting on ${names} to Ready`;
+                          })()}
               </Button>
             </GlowCard>
           ) : (
