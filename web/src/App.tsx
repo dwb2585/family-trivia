@@ -56,6 +56,13 @@ export default function App() {
     fallback: string;
     autoDismissMs?: number;
   }[]>([]);
+  // Voice preference — users must opt in via a tap (browsers block autoplay).
+  // Persisted in localStorage so they don't have to re-enable each visit.
+  const VOICE_KEY = "ft:narratorVoice";
+  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(VOICE_KEY) === "1";
+  });
   // facts[playerId][factKey] = factValue
   const [factsByPlayer, setFactsByPlayer] = useState<Record<string, Record<string, string>>>({});
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -741,6 +748,22 @@ export default function App() {
     handleLeave();
   }, [handleLeave]);
 
+  // Pop the head off the narrator line queue. Stable so the NarratorOverlay
+  // effect doesn't re-run on every realtime update.
+  const handleNarratorConsumed = useCallback(() => {
+    setNarratorLines((prev) => (prev.length > 0 ? prev.slice(1) : prev));
+  }, []);
+
+  // User opted into voice — persist so we don't have to ask again.
+  const handleEnableVoice = useCallback(() => {
+    setVoiceEnabled(true);
+    try {
+      localStorage.setItem(VOICE_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   // ---- URL deep link: ?join=ABCD ----
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -787,11 +810,9 @@ export default function App() {
   const narratorOverlay = (
     <NarratorOverlay
       lines={narratorLines}
-      position="top"
-      enableVoice={true}
-      onConsumed={() =>
-        setNarratorLines((prev) => (prev.length > 0 ? prev.slice(1) : prev))
-      }
+      voiceEnabled={voiceEnabled}
+      onConsumed={handleNarratorConsumed}
+      onEnableVoice={handleEnableVoice}
     />
   );
 
