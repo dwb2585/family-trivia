@@ -7,6 +7,8 @@ import { Marquee } from "@/components/ui/Marquee";
 import { LeaveButton } from "@/components/ui/LeaveButton";
 import { FamilyMemberSelect } from "@/components/ui/Select";
 import { VoiceInputField } from "@/components/ui/VoiceInputField";
+import { ChatInterview } from "@/components/ui/ChatInterview";
+import { INTERVIEW_QUESTIONS } from "@/lib/interviewPrompts";
 import { FAMILY, avatarFor } from "@/lib/family";
 import type { Player, DefaultFact } from "@/lib/supabase";
 import { cn, uuid } from "@/lib/utils";
@@ -76,6 +78,7 @@ export function Lobby({
     Record<string, { saving: boolean; savedAt: Date | null; error: string | null }>
   >({});
   const [savingNow, setSavingNow] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const activePlayer = myPlayers.find((p) => p.id === activePlayerId) ?? myPlayers[0];
   const allMyReady = myPlayers.every((p) => p.ready);
@@ -430,6 +433,26 @@ export function Lobby({
                   ) : null}
                 </CardHeader>
                 <CardBody className="pt-2 space-y-3">
+                  {/* Mode toggle — form or chat interview */}
+                  {!activePlayer?.ready && activePlayer ? (
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setChatOpen(true)}
+                        className={cn(
+                          "text-xs px-3 py-1.5 rounded-full",
+                          "bg-gradient-to-r from-violet/20 to-cyan/20",
+                          "border border-violet/30",
+                          "text-foreground/80 hover:text-foreground hover:border-violet/50",
+                          "transition-all duration-150",
+                          "flex items-center gap-1.5",
+                        )}
+                      >
+                        <span aria-hidden="true">💬</span>
+                        <span>Try AI chat instead</span>
+                      </button>
+                    </div>
+                  ) : null}
                   {defaultFacts.map((fact) => (
                     <FactField
                       key={fact.id}
@@ -503,7 +526,7 @@ export function Lobby({
                 className="w-full"
               >
                 {starting
-                  ? "Starting…"
+                  ? "Generating questions with AI…"
                   : everyoneReady
                     ? `Start Game (${players.length} players)`
                     : incomplete.length > 0
@@ -558,6 +581,48 @@ export function Lobby({
 
         <Marquee className="mt-4" />
       </div>
+
+      {/* AI Chat Interview modal */}
+      <AnimatePresence>
+        {chatOpen && activePlayer ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stage/80 backdrop-blur-sm"
+            onClick={() => setChatOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.97 }}
+              transition={{ duration: 0.25 }}
+              className="w-full max-w-md rounded-2xl bg-stage/95 border border-cyan/30 shadow-cyan-glow p-5"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-label={`AI chat interview for ${activePlayer.name}`}
+            >
+              <ChatInterview
+                playerName={activePlayer.name}
+                questions={INTERVIEW_QUESTIONS}
+                initialFacts={facts}
+                onChange={(next) => {
+                  // Push every key/value back through onFactChange so the
+                  // lobby's factsByPlayer state stays in sync.
+                  for (const q of INTERVIEW_QUESTIONS) {
+                    if ((next[q.key] ?? "") !== (facts[q.key] ?? "")) {
+                      onFactChange(q.key, next[q.key] ?? "");
+                    }
+                  }
+                }}
+                onCancel={() => setChatOpen(false)}
+                onComplete={() => setChatOpen(false)}
+              />
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

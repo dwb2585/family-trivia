@@ -2,6 +2,7 @@ import type { Player, PlayerFact, Question } from "./supabase";
 import type { DefaultFact } from "./supabase";
 import { shuffle } from "./utils";
 import { pickDistractors as pickDistractorsRich } from "./facts";
+import { fetchAIDistractorsBatch } from "./aiDistractors";
 
 export interface GenerateInput {
   gameId: string;
@@ -72,12 +73,12 @@ function promptFor(
  */
 const QUESTIONS_PER_FACT = 2;
 
-export function generateQuestions({
+export async function generateQuestions({
   gameId,
   players,
   facts,
   defaultFacts,
-}: GenerateInput): Omit<Question, "id">[] {
+}: GenerateInput): Promise<Omit<Question, "id">[]> {
   const mode = chooseQuestionMode(players);
 
   // Map player_id -> facts[]
@@ -86,6 +87,35 @@ export function generateQuestions({
   for (const f of facts) {
     const list = factsByPlayer.get(f.player_id);
     if (list) list.push(f);
+  }
+
+  // ── AI distractor prefetch ───────────────────────────────────────
+  // For multiple-choice games, batch-call the Supabase Edge Function
+  // once per unique (factKey, factValue) tuple. The static FACT_DISTRACTORS
+  // bank stays as a fallback if the AI call fails or returns nothing.
+  // who-said-it mode uses player names directly — no distractors needed.
+  const aiDistractorsByKeyValue = new Map<string, string[]>();
+  if (mode === "multiple-choice") {
+    const seen = new Set<string>();
+    const requests: { factKey: string; factLabel: string; factValue: string }[] = [];
+    for (const f of facts) {
+      const k = `${f.fact_key}::${f.fact_value}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      requests.push({
+        factKey: f.fact_key,
+        factLabel: labelFor(f.fact_key, defaultFacts),
+        factValue: f.fact_value,
+      });
+    }
+    if (requests.length > 0) {
+      try {
+        const ai = await fetchAIDistractorsBatch(requests);
+        for (const [k, v] of ai) aiDistractorsByKeyValue.set(k, v);
+      } catch (e) {
+        console.warn("AI distractor prefetch failed, using static banks:", e);
+      }
+    }
   }
 
   const questions: Omit<Question, "id">[] = [];
@@ -127,11 +157,13 @@ export function generateQuestions({
         const otherFactValuesAcrossGame = facts
           .filter((f) => f.player_id !== subject.id)
           .map((f) => f.fact_value);
+        const aiBank = aiDistractorsByKeyValue.get(`${fact.fact_key}::${fact.fact_value}`);
         const distractors = pickDistractorsRich(
           fact.fact_value,
           fact.fact_key,
           otherPlayersSameKey,
           otherFactValuesAcrossGame,
+          aiBank,
         );
 
         const options = shuffle([fact.fact_value, ...distractors]);

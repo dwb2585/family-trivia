@@ -535,7 +535,7 @@ export default function App() {
       }
     }
 
-    const generated = generateQuestions({
+    const generated = await generateQuestions({
       gameId: game.id,
       players: (playersAll ?? []) as Player[],
       facts: (factsAll ?? []) as { id: string; player_id: string; fact_key: string; fact_value: string }[],

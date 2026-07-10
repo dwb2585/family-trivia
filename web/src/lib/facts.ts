@@ -907,6 +907,13 @@ export function pickDistractors(
    * which is still better than showing a 2-option question.
    */
   otherFactValuesAcrossGame?: string[],
+  /**
+   * Optional AI-generated same-category distractors. When provided AND
+   * non-empty, these are tried first (highest priority) — better than
+   * either bank or other-player answers for uncommon question categories
+   * or unusual player answers. Fall through to bank if AI gives < 3.
+   */
+  aiDistractors?: string[],
 ): string[] {
   const distractors: string[] = [];
   const seen = new Set<string>([correctValue.trim().toLowerCase()]);
@@ -919,7 +926,17 @@ export function pickDistractors(
     }
   }
 
-  // 1. Bank — primary source of plausible wrong answers.
+  // 0. AI-generated distractors (highest priority when present).
+  // AI understands the question category and current answer, so it's
+  // usually more on-target than the static bank for niche keys.
+  if (aiDistractors?.length) {
+    for (const a of shuffle(aiDistractors)) {
+      if (distractors.length >= 3) break;
+      tryAdd(a);
+    }
+  }
+
+  // 1. Bank — primary static source of plausible wrong answers.
   // Resolve aliases so similar-fact keys (e.g., best_concert ↔ first_concert)
   // share a curated bank instead of each needing its own.
   const bankKey = FACT_KEY_ALIASES[factKey] ?? factKey;

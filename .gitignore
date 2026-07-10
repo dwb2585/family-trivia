@@ -8,3 +8,5 @@ dist/
 *.tsbuildinfo
 .vite/
 .vercel
+supabase/.temp/
+supabase/.branches/
