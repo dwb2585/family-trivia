@@ -12,6 +12,7 @@ import { Lobby } from "@/components/screens/Lobby";
 import { GamePlay } from "@/components/screens/GamePlay";
 import { Final } from "@/components/screens/Final";
 import { ProfileScreen } from "@/components/screens/ProfileScreen";
+import { NarratorOverlay } from "@/components/ui/NarratorOverlay";
 
 type Phase = "home" | "create" | "join" | "profile" | "lobby" | "playing" | "finished";
 
@@ -47,6 +48,14 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(() => loadSession());
   const [game, setGame] = useState<Game | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
+  // Narrator overlay line queue — populated on phase transitions.
+  // Consumed by <NarratorOverlay> mounted once near the root.
+  const [narratorLines, setNarratorLines] = useState<{
+    kind: "intro" | "outro" | "reaction" | "score_summary" | "tiebreak_tease";
+    context: Record<string, unknown>;
+    fallback: string;
+    autoDismissMs?: number;
+  }[]>([]);
   // facts[playerId][factKey] = factValue
   const [factsByPlayer, setFactsByPlayer] = useState<Record<string, Record<string, string>>>({});
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -122,6 +131,62 @@ export default function App() {
   useEffect(() => {
     refreshPlayerFactCounts();
   }, [refreshPlayerFactCounts]);
+
+  // ---- Narrator: fire lines on phase transitions ----
+  const firedIntroFor = useRef<string | null>(null);
+  const firedOutroFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!game) return;
+    if (phase === "playing") {
+      // Fire the intro once per game.
+      if (firedIntroFor.current === game.id) return;
+      firedIntroFor.current = game.id;
+      const total = game.total_questions || 5;
+      setNarratorLines((prev) => [
+        ...prev,
+        {
+          kind: "intro",
+          context: { round: 1, totalRounds: total, players: players.map((p) => ({ name: p.name, score: p.score })) },
+          fallback: "Welcome to Family Trivia — let's see who really knows this family!",
+          autoDismissMs: 4500,
+        },
+      ]);
+    }
+    if (phase === "finished") {
+      // Fire the outro + score summary once per game.
+      if (firedOutroFor.current === game.id) return;
+      firedOutroFor.current = game.id;
+      const sorted = [...players].sort((a, b) => b.score - a.score);
+      const leader = sorted[0];
+      const runnerUp = sorted[1];
+      const gap = leader && runnerUp ? leader.score - runnerUp.score : leader?.score ?? 0;
+      setNarratorLines((prev) => [
+        ...prev,
+        {
+          kind: "score_summary",
+          context: {
+            players: players.map((p) => ({ name: p.name, score: p.score })),
+            leaderName: leader?.name,
+            runnerUpName: runnerUp?.name,
+            scoreGap: gap,
+          },
+          fallback: `That's the game! ${leader?.name ?? "Someone"} takes the crown.`,
+          autoDismissMs: 4500,
+        },
+        {
+          kind: "outro",
+          context: {
+            players: players.map((p) => ({ name: p.name, score: p.score })),
+            leaderName: leader?.name,
+            runnerUpName: runnerUp?.name,
+            scoreGap: gap,
+          },
+          fallback: `And that's a wrap. Congratulations, ${leader?.name ?? "winner"} — you earned this one.`,
+          autoDismissMs: 6000,
+        },
+      ]);
+    }
+  }, [phase, game, players]);
 
   // ---- Realtime subscriptions ----
   useEffect(() => {
@@ -719,39 +784,58 @@ export default function App() {
   }, [myPlayers, factsByPlayer]);
 
   // ---- Render ----
+  const narratorOverlay = (
+    <NarratorOverlay
+      lines={narratorLines}
+      position="top"
+      enableVoice={true}
+      onConsumed={() =>
+        setNarratorLines((prev) => (prev.length > 0 ? prev.slice(1) : prev))
+      }
+    />
+  );
+
   if (phase === "home") {
     return (
-      <Home
-        onHost={() => setPhase("create")}
-        onJoin={() => setPhase("join")}
-        onProfile={() => setPhase("profile")}
-        hasStoredGame={!!session?.gameId}
-        onResume={handleResume}
-      />
+      <>
+        {narratorOverlay}
+        <Home
+          onHost={() => setPhase("create")}
+          onJoin={() => setPhase("join")}
+          onProfile={() => setPhase("profile")}
+          hasStoredGame={!!session?.gameId}
+          onResume={handleResume}
+        />
+      </>
     );
   }
 
   if (phase === "create") {
-    return <CreateGame onSubmit={handleHost} onBack={() => setPhase("home")} />;
+    return <>{narratorOverlay}<CreateGame onSubmit={handleHost} onBack={() => setPhase("home")} /></>;
   }
 
   if (phase === "join") {
-    return <JoinGame onSubmit={handleJoin} onBack={() => setPhase("home")} />;
+    return <>{narratorOverlay}<JoinGame onSubmit={handleJoin} onBack={() => setPhase("home")} /></>;
   }
 
   if (phase === "profile") {
     return (
-      <ProfileScreen
-        onBack={handleProfileClose}
-        defaultFacts={defaultFacts}
-        onDefaultFactsChanged={refreshDefaultFacts}
-      />
+      <>
+        {narratorOverlay}
+        <ProfileScreen
+          onBack={handleProfileClose}
+          defaultFacts={defaultFacts}
+          onDefaultFactsChanged={refreshDefaultFacts}
+        />
+      </>
     );
   }
 
   if (phase === "lobby" && game && me) {
     return (
-      <Lobby
+      <>
+        {narratorOverlay}
+        <Lobby
         code={game.code}
         myPlayers={myPlayers}
         activePlayerId={me.id}
@@ -774,12 +858,15 @@ export default function App() {
         onOpenProfile={() => setPhase("profile")}
         isHost={!!session?.hostToken}
       />
+      </>
     );
   }
 
   if (phase === "playing" && game && me && currentQuestion) {
     return (
-      <GamePlay
+      <>
+        {narratorOverlay}
+        <GamePlay
         me={me}
         myPlayers={myPlayers}
         players={players}
@@ -797,16 +884,20 @@ export default function App() {
         onSetActive={handleSetActivePlayer}
         onLeave={handleLeave}
       />
+      </>
     );
   }
 
   if (phase === "finished") {
-    return <Final players={players} avatarOverrides={avatarOverrides} onPlayAgain={handlePlayAgain} onLeave={handleLeave} />;
+    return <>{narratorOverlay}<Final players={players} avatarOverrides={avatarOverrides} onPlayAgain={handlePlayAgain} onLeave={handleLeave} /></>;
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-stage text-cream/60">
-      <p>Loading…</p>
-    </div>
+    <>
+      {narratorOverlay}
+      <div className="min-h-screen flex items-center justify-center bg-stage text-cream/60">
+        <p>Loading…</p>
+      </div>
+    </>
   );
 }

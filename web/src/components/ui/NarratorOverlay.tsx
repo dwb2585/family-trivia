@@ -26,22 +26,26 @@ export interface NarratorContext {
   correctStreak?: number;
 }
 
+interface NarratorLine {
+  kind: NarratorKind;
+  context: NarratorContext;
+  /** Static fallback used if the Edge Function call fails entirely. */
+  fallback: string;
+  /** Auto-dismiss after this many ms. 0 = persist until manually cleared. */
+  autoDismissMs?: number;
+}
+
 interface NarratorOverlayProps {
-  /** Lines to cycle through. Each entry fires fetchNarration + fetchTts. */
-  lines: {
-    kind: NarratorKind;
-    context: NarratorContext;
-    /** Static fallback used if the Edge Function call fails entirely. */
-    fallback: string;
-    /** Auto-dismiss after this many ms. 0 = persist until manually cleared. */
-    autoDismissMs?: number;
-    /** Hook fired after the line + audio finish (success or error). */
-    onDone?: () => void;
-  }[];
+  /** Queue of lines. The first one is currently active; once it completes
+   * the parent is expected to remove it from the queue. */
+  lines: NarratorLine[];
   /** Position on screen. */
   position?: "top" | "bottom";
   /** Whether to attempt TTS. Disable for muted users. */
   enableVoice?: boolean;
+  /** Fired after the current line settles (audio ends or autoDismissMs timer
+   * fires). Parent should pop the head of the queue here. */
+  onConsumed?: () => void;
 }
 
 /**
@@ -52,35 +56,31 @@ export function NarratorOverlay({
   lines,
   position = "top",
   enableVoice = true,
+  onConsumed,
 }: NarratorOverlayProps) {
-  const [current, setCurrent] = React.useState<(typeof lines)[number] | null>(
-    lines[0] ?? null,
-  );
+  const current: NarratorLine | null = lines[0] ?? null;
   const [resolved, setResolved] = React.useState<string>("");
   const dismissTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const settleFiredRef = React.useRef(false);
 
-  // Replace the current item when the queue shifts (parent passes a new array).
+  // Reset state when the head of the queue changes (new line to render).
   React.useEffect(() => {
-    if (lines[0] && lines[0] !== current) {
-      setCurrent(lines[0]);
-      setResolved("");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lines]);
+    setResolved("");
+    settleFiredRef.current = false;
+  }, [current]);
 
   const settle = React.useCallback(() => {
-    if (!current) return;
-    current.onDone?.();
-  }, [current]);
+    if (settleFiredRef.current) return;
+    settleFiredRef.current = true;
+    onConsumed?.();
+  }, [onConsumed]);
 
   // Fetch narration + audio for the current line.
   React.useEffect(() => {
     if (!current) return;
     const ac = new AbortController();
     let cancelled = false;
-
-    setResolved("");
 
     void (async () => {
       const line = await fetchNarration(
@@ -106,8 +106,7 @@ export function NarratorOverlay({
           audioRef.current.pause();
         }
         audioRef.current = playAudioBlob(blob, 0.9);
-        if (audioRef.current && current.autoDismissMs) {
-          // When the audio finishes, settle — but only if a timer wasn't already set.
+        if (audioRef.current) {
           audioRef.current.onended = () => {
             if (dismissTimer.current) {
               clearTimeout(dismissTimer.current);
@@ -131,8 +130,7 @@ export function NarratorOverlay({
         audioRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, enableVoice]);
+  }, [current, enableVoice, settle]);
 
   return (
     <AnimatePresence>
