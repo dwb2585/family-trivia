@@ -251,6 +251,13 @@ export default function App() {
 
       // Restore facts for all my players (so the lobby form prefills even
       // if we're resuming mid-game).
+      //
+      // IMPORTANT: merge with existing state, don't replace. On a new game's
+      // first mount, `createOrJoinPlayer` has already pre-filled
+      // factsByPlayer[p.id] from the player's saved profile. Reading empty
+      // `player_facts` rows here (because nobody has clicked Ready yet) used
+      // to wipe that prefill and leave the lobby blank — the "answers save
+      // in profile but don't carry over to the game" bug.
       const myRows = (ps ?? []).filter((p: Player) => p.client_id === clientIdRef.current);
       if (myRows.length > 0) {
         const ids = myRows.map((p) => p.id);
@@ -264,7 +271,13 @@ export default function App() {
             if (!map[f.player_id]) map[f.player_id] = {};
             map[f.player_id][f.fact_key] = f.fact_value;
           }
-          setFactsByPlayer(map);
+          setFactsByPlayer((prev) => {
+            const next = { ...prev };
+            for (const [pid, pfacts] of Object.entries(map)) {
+              next[pid] = { ...next[pid], ...pfacts };
+            }
+            return next;
+          });
         }
       }
 

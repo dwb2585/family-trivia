@@ -29,20 +29,32 @@ export async function upsertProfile(
   // seed list so older callers (and tests) keep working.
   const knownKeys =
     validKeys ?? new Set(DEFAULT_FACTS.map((f) => f.key));
-  const cleanFacts: Record<string, string> = {};
+  const incoming: Record<string, string> = {};
   for (const [k, v] of Object.entries(facts)) {
     const trimmed = (v || "").trim();
     if (trimmed && knownKeys.has(k)) {
-      cleanFacts[k] = trimmed;
+      incoming[k] = trimmed;
     }
   }
 
-  if (Object.keys(cleanFacts).length === 0) return;
+  if (Object.keys(incoming).length === 0) return;
+
+  // MERGE, don't replace. profiles.facts is a JSONB column with no FK, so
+  // saving with `cleanFacts` alone wipes any keys the caller doesn't know
+  // about (e.g., answers saved under old default_facts keys before a pool
+  // migration like 0010). Preserve them by reading the existing row and
+  // overlaying only the filtered incoming values.
+  const trimmed = fullName.trim();
+  const existing = await getProfile(trimmed);
+  const merged: Record<string, string> = { ...(existing?.facts || {}) };
+  for (const [k, v] of Object.entries(incoming)) {
+    merged[k] = v;
+  }
 
   const { error } = await supabase
     .from("profiles")
     .upsert(
-      { full_name: fullName.trim(), facts: cleanFacts },
+      { full_name: trimmed, facts: merged },
       { onConflict: "full_name" },
     );
   if (error) {
