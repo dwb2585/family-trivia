@@ -320,6 +320,27 @@ export default function App() {
           next.add(p.id);
           return next;
         });
+
+        // Commit the prefilled profile facts to player_facts too, so the
+        // X/10 counter in the lobby is honest the moment the player joins.
+        // Without this, the lobby shows 0/10 for every fresh player — the
+        // form has the answers (local React state) but the DB has nothing
+        // until Save/Ready/Start, so the live count and the form disagree.
+        const rows = Object.entries(profile.facts || {})
+          .filter(([, v]) => (v || "").trim().length > 0)
+          .map(([fact_key, fact_value]) => ({
+            player_id: p.id,
+            fact_key,
+            fact_value: fact_value.trim(),
+          }));
+        if (rows.length > 0) {
+          const { error: pfErr } = await supabase
+            .from("player_facts")
+            .upsert(rows, { onConflict: "player_id,fact_key" });
+          if (pfErr) {
+            console.warn("Failed to commit prefill to player_facts", pfErr);
+          }
+        }
       } else {
         setFactsByPlayer((prev) =>
           prev[p.id] ? prev : { ...prev, [p.id]: {} },
@@ -465,6 +486,18 @@ export default function App() {
       const pf = factsByPlayer[me.id] || {};
       await persistFacts(me.id, pf);
       await upsertProfile(me.name, pf, validKeysSet);
+    }
+
+    // For multi-player-on-one-phone, also flush any local-state edits for
+    // the host's other players before the DB-side count check below. The
+    // previous version only persisted `me`, so a two-player lobby where
+    // the host filled in player B's form but never clicked Ready would
+    // fail validation here even though the form had 10/10 answers.
+    for (const p of myPlayers) {
+      if (p.id === me?.id) continue;
+      const pf = factsByPlayer[p.id] || {};
+      await persistFacts(p.id, pf);
+      await upsertProfile(p.name, pf, validKeysSet);
     }
 
     const [{ data: playersAll }, { data: playerIds }] = await Promise.all([

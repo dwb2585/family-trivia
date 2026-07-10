@@ -92,9 +92,21 @@ export function Lobby({
   const activeHasEnough = activeFactsCount >= minFactsRequired;
 
   // Players across the whole game who've saved < minFactsRequired facts.
-  const incomplete = players.filter(
-    (p) => (playerFactCounts[p.id] || 0) < minFactsRequired,
-  );
+  // For players on this device, prefer local state (the form values) —
+  // the DB-backed playerFactCounts can lag if the user typed something
+  // but hasn't tapped Save yet. For players on other devices we only have
+  // the DB count, so use that. This keeps the X/10 pill honest even
+  // before Save/Ready/Start fires.
+  const countFor = (p: (typeof players)[number]): number => {
+    const dbCount = playerFactCounts[p.id] ?? 0;
+    if (p.client_id === activePlayer?.client_id) {
+      const localFacts = myFactsByPlayer[p.id] || {};
+      const localCount = Object.values(localFacts).filter((v) => v.trim()).length;
+      return Math.max(dbCount, localCount);
+    }
+    return dbCount;
+  };
+  const incomplete = players.filter((p) => countFor(p) < minFactsRequired);
   const incompleteNames = incomplete.map((p) => p.name);
   const everyoneReady =
     players.length >= 2 &&
@@ -217,7 +229,7 @@ export function Lobby({
                 {players.map((p) => {
                   const isMe = p.client_id === activePlayer?.client_id && p.id === activePlayer?.id;
                   const rosterEmoji = avatarFor(p.name, avatarOverrides);
-                  const count = playerFactCounts[p.id] ?? 0;
+                  const count = countFor(p);
                   const hasEnough = count >= minFactsRequired;
                   return (
                     <motion.div
