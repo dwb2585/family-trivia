@@ -7,7 +7,7 @@ import { supabaseUrl, supabaseAnonKey } from "./supabase";
 const BASE = `${supabaseUrl}/functions/v1`;
 
 interface NarratorRequest {
-  kind: "intro" | "outro" | "reaction" | "score_summary" | "tiebreak_tease";
+  kind: "intro" | "outro" | "reaction" | "score_summary" | "tiebreak_tease" | "commentary";
   context: Record<string, unknown>;
 }
 

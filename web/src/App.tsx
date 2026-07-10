@@ -51,7 +51,7 @@ export default function App() {
   // Narrator overlay line queue — populated on phase transitions.
   // Consumed by <NarratorOverlay> mounted once near the root.
   const [narratorLines, setNarratorLines] = useState<{
-    kind: "intro" | "outro" | "reaction" | "score_summary" | "tiebreak_tease";
+    kind: "intro" | "outro" | "reaction" | "score_summary" | "tiebreak_tease" | "commentary";
     context: Record<string, unknown>;
     fallback: string;
     autoDismissMs?: number;
@@ -754,6 +754,31 @@ export default function App() {
     setNarratorLines((prev) => (prev.length > 0 ? prev.slice(1) : prev));
   }, []);
 
+  // Mid-game summon: push a `commentary` line about the current question
+  // onto the narrator queue. The model gives a cheeky hint that doesn't
+  // spoil the answer. We never send `correct_option_index` or the answer
+  // text — the host prompt is designed to nudge without revealing.
+  const handleSummonHost = useCallback(() => {
+    const cq = questions.find((q) => q.question_index === game?.current_question);
+    if (!cq) return;
+    const subject = players.find((p) => p.id === cq.subject_player_id);
+    setNarratorLines((prev) => [
+      ...prev,
+      {
+        kind: "commentary",
+        context: {
+          questionText: cq.question_text,
+          subjectName: subject?.name,
+          round: (game?.current_question ?? 0) + 1,
+          totalRounds: game?.total_questions ?? 5,
+          players: players.map((p) => ({ name: p.name, score: p.score })),
+        },
+        fallback: "You rang? Let's see… this one's a doozy.",
+        autoDismissMs: 5500,
+      },
+    ]);
+  }, [questions, game, players]);
+
   // User opted into voice — persist so we don't have to ask again.
   const handleEnableVoice = useCallback(() => {
     setVoiceEnabled(true);
@@ -904,6 +929,7 @@ export default function App() {
         onNext={handleNext}
         onSetActive={handleSetActivePlayer}
         onLeave={handleLeave}
+        onSummonHost={handleSummonHost}
       />
       </>
     );

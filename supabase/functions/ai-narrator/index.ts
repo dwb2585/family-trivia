@@ -27,7 +27,7 @@ const MINIMAX_BASE = Deno.env.get("MINIMAX_BASE_URL") || "https://api.minimax.io
 const MINIMAX_API_KEY = Deno.env.get("MINIMAX_API_KEY");
 const MINIMAX_MODEL = Deno.env.get("MINIMAX_MODEL") || "MiniMax-M3";
 
-type Kind = "intro" | "outro" | "reaction" | "score_summary" | "tiebreak_tease";
+type Kind = "intro" | "outro" | "reaction" | "score_summary" | "tiebreak_tease" | "commentary";
 
 interface Player {
   name: string;
@@ -151,6 +151,25 @@ function buildUserPrompt(kind: Kind, ctx: Context): string {
         `Build the drama. "May the best family member win."`,
       ].filter(Boolean).join("\n");
 
+    case "commentary": {
+      // The host is being summoned in the middle of the game to deliver a
+      // short, atmospheric line. Sometimes a hint, sometimes a joke, never
+      // a giveaway. We hand the model only loose context (no answer key,
+      // no quoting) and trust the personality to fill the rest.
+      return [
+        `A family member just tapped the host button mid-game and wants to hear from you.`,
+        ctx.subjectName
+          ? `You are commenting on a question about ${ctx.subjectName} — that person's trivia answer.`
+          : `You are commenting on the current question.`,
+        ctx.players?.length
+          ? `Current standings: ${ctx.players.map((p) => `${p.name} ${p.score}`).join(", ")}.`
+          : ``,
+        `Cheeky, warm, on-theme. Avoid giving away anything the players haven't already guessed at.`,
+        `One short original sentence — no quoting, no echoing anything you've been told.`,
+        `Generic vibe if you have nothing specific to say: "You rang?" / "Hmm, this one's spicy." / "Careful — this is a trap."`,
+      ].filter(Boolean).join("\n");
+    }
+
     default:
       return `Deliver a short, in-character host line.`;
   }
@@ -177,6 +196,10 @@ const FALLBACKS: Record<Kind, string[]> = {
     "And now… the tiebreaker. May the best family member win.",
     "It's all on the line. Tiebreaker question — coming up.",
   ],
+  commentary: [
+    "You rang? Let's see… this question is a sneaky one.",
+    "Oh, a callback to my favorite kind of trivia!",
+  ],
 };
 
 function pickFallback(kind: Kind): string {
@@ -193,8 +216,12 @@ function pickFallback(kind: Kind): string {
  * - models that occasionally return JSON with a `line` key
  */
 function extractLine(text: string): string | null {
-  const trimmed = text.trim();
+  let trimmed = text.trim();
   if (!trimmed) return null;
+
+  // Strip MiniMax chain-of-thought blocks (`<think>...</think>`). Some
+  // models leak their reasoning before the actual line.
+  trimmed = trimmed.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
   // Strip markdown code fences if present.
   const stripped = trimmed
@@ -268,7 +295,7 @@ Deno.serve(async (req: Request) => {
 
   const kind = body.kind;
   const ctx = body.context;
-  const validKinds: Kind[] = ["intro", "outro", "reaction", "score_summary", "tiebreak_tease"];
+  const validKinds: Kind[] = ["intro", "outro", "reaction", "score_summary", "tiebreak_tease", "commentary"];
   if (!kind || !validKinds.includes(kind)) {
     return new Response(
       JSON.stringify({ error: `Invalid kind. Must be one of: ${validKinds.join(", ")}` }),
@@ -299,8 +326,8 @@ Deno.serve(async (req: Request) => {
       },
       body: JSON.stringify({
         model: MINIMAX_MODEL,
-        max_tokens: 150,
-        temperature: 0.95,
+        max_tokens: 250,
+        temperature: 0.85,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userPrompt },

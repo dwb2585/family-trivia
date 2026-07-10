@@ -8,7 +8,8 @@ export type NarratorKind =
   | "outro"
   | "reaction"
   | "score_summary"
-  | "tiebreak_tease";
+  | "tiebreak_tease"
+  | "commentary";
 
 export interface NarratorContext {
   questionText?: string;

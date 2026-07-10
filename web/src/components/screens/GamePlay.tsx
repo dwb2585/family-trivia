@@ -26,6 +26,7 @@ interface GamePlayProps {
   onNext: () => Promise<void>;
   onSetActive: (playerId: string) => void;
   onLeave: () => void;
+  onSummonHost?: () => void;
 }
 
 // Local helper kept for legacy `emojiFor(name)` call sites; delegates to the
@@ -51,6 +52,7 @@ export function GamePlay({
   onNext,
   onSetActive,
   onLeave,
+  onSummonHost,
 }: GamePlayProps) {
   const [answering, setAnswering] = useState(false);
   const [countdown, setCountdown] = useState(15);
@@ -205,6 +207,28 @@ export function GamePlay({
                     <p className="text-gold font-semibold text-sm">
                       This fact is yours. Everyone else is guessing.
                     </p>
+                  </div>
+                ) : null}
+
+                {onSummonHost ? (
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={onSummonHost}
+                      className={cn(
+                        "text-[11px] font-bold uppercase tracking-[0.18em]",
+                        "px-3 py-1.5 rounded-full",
+                        "bg-gradient-to-r from-violet/20 to-cyan/20",
+                        "border border-violet/30 text-foreground/70",
+                        "hover:text-foreground hover:border-violet/60",
+                        "transition-all duration-150",
+                        "flex items-center gap-1.5",
+                      )}
+                      title="Bring the host back for a quick comment"
+                    >
+                      <span aria-hidden="true">🎙️</span>
+                      <span>Ask the host</span>
+                    </button>
                   </div>
                 ) : null}
               </CardBody>
