@@ -846,6 +846,9 @@ export default function App() {
   // subject of the question, fire `subject_intro` (spotlight on them) — they
   // already know the answer and don't need it read aloud. Otherwise fire
   // `read_question` so the host announces the question to the guesser.
+  // For tailored questions (fact_key starts with "tailored:"), queue an
+  // extra `commentary` shout-out before reading — "Coming up — a question
+  // tailored for [name]!" so players register the customized moment.
   // Use a ref keyed on question id so we never re-fire for the same question.
   const readQuestionFor = useRef<string | null>(null);
   useEffect(() => {
@@ -854,28 +857,52 @@ export default function App() {
     readQuestionFor.current = currentQuestion.id;
     const subject = players.find((p) => p.id === currentQuestion.subject_player_id);
     const isLocalSubject = !!me && currentQuestion.subject_player_id === me.id;
-    setNarratorLines((prev) => [
-      ...prev,
-      {
-        kind: isLocalSubject ? "subject_intro" : "read_question",
+    const isTailored = currentQuestion.fact_key.startsWith("tailored:");
+    const tag = isTailored ? currentQuestion.fact_key.split(":")[1] : null;
+
+    const lines: typeof narratorLines = [];
+
+    // Tailored shout-out: fire only for guessers (subjects already know
+    // the answer and will get a spotlight line shortly).
+    if (isTailored && !isLocalSubject && subject) {
+      lines.push({
+        kind: "commentary",
         context: {
           questionText: currentQuestion.question_text,
-          subjectName: subject?.name,
+          subjectName: subject.name,
           round: (game?.current_question ?? 0) + 1,
           totalRounds: game?.total_questions ?? 5,
           players: players.map((p) => ({ name: p.name, score: p.score })),
         },
-        fallback: isLocalSubject
-          ? `Spotlight's on you, ${subject?.name ?? "friend"} — let's see if they know you!`
-          : `Here's the next one: ${currentQuestion.question_text}`,
-        // Don't autoDismiss — let gameplay take the floor after audio ends.
-        autoDismissMs: 0,
+        fallback: `Coming up — a question tailored for ${subject.name}.`,
+        // Short — just enough for the host to set the scene.
+        autoDismissMs: 3200,
+      });
+    }
+
+    lines.push({
+      kind: isLocalSubject ? "subject_intro" : "read_question",
+      context: {
+        questionText: currentQuestion.question_text,
+        subjectName: subject?.name,
+        round: (game?.current_question ?? 0) + 1,
+        totalRounds: game?.total_questions ?? 5,
+        players: players.map((p) => ({ name: p.name, score: p.score })),
       },
-    ]);
+      fallback: isLocalSubject
+        ? `Spotlight's on you, ${subject?.name ?? "friend"} — let's see if they know you!`
+        : `Here's the next one: ${currentQuestion.question_text}`,
+      // Don't autoDismiss — let gameplay take the floor after audio ends.
+      autoDismissMs: 0,
+    });
+
+    setNarratorLines((prev) => [...prev, ...lines]);
+    void tag; // currently unused; kept for future per-tag narration tweaks
   }, [currentQuestion, phase, game, players, me]);
 
   // Tiny ack when a player submits an answer. Detection watches answer
-  // count rising between renders.
+  // count rising between renders. In big games (4+ players) we throttle
+  // to every other submission so the host doesn't chatter non-stop.
   const ackedAnswerCount = useRef(0);
   useEffect(() => {
     if (phase !== "playing" || !game) return;
@@ -885,6 +912,14 @@ export default function App() {
       return;
     }
     ackedAnswerCount.current = c;
+
+    // Throttle: in 4+ player games only fire acks every other answer
+    // (and always on the last one to give a "all locked in" beat).
+    const isBigGame = players.length >= 4;
+    const isFinal = c >= players.length; // everyone has answered
+    const shouldAck = !isBigGame || isFinal || c % 2 === 0;
+    if (!shouldAck) return;
+
     const recent = answers[answers.length - 1];
     const submitter = players.find((p) => p.id === recent.player_id);
     if (!submitter) return;
@@ -899,8 +934,10 @@ export default function App() {
           totalRounds: game.total_questions ?? 5,
           players: players.map((p) => ({ name: p.name, score: p.score })),
         },
-        fallback: `Locked in from ${submitter.name}!`,
-        autoDismissMs: 0,
+        fallback: isFinal
+          ? `That's everyone — let's see what you've got!`
+          : `Locked in from ${submitter.name}!`,
+        autoDismissMs: isFinal ? 4500 : 0,
       },
     ]);
   }, [answers.length, phase, game, players, answers]);

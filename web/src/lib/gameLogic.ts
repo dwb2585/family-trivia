@@ -159,16 +159,41 @@ export async function generateQuestions({
   // repeat the same bank item twice in a round.
   const usedTailoredIds = new Set<string>();
 
+  /** Compute today's age in years from a birth_year. Returns null if missing. */
+  function ageFromBirthYear(by: number | null | undefined): number | null {
+    if (!by || by < 1900) return null;
+    const now = new Date();
+    return now.getFullYear() - by;
+  }
+
   /** ~20% chance to inject a tailored question for this subject instead
    * of pulling from their personal-facts list. We require that the player
-   * actually has a tailored pool available; otherwise always fall back. */
+   * actually has a tailored pool available; otherwise always fall back.
+   * If the subject is a kid (<16), force difficulty: easy so they're
+   * not grilled by adult trivia. */
   function maybeInjectTailored(subjectId: string): boolean {
     const pool = tailoredPoolByPlayer.get(subjectId);
     if (!pool || pool.length === 0) return false;
     if (Math.random() >= 0.2) return false;
-    const remaining = pool.filter((q) => !usedTailoredIds.has(q.id));
-    if (remaining.length === 0) return false;
-    const pick = remaining[Math.floor(Math.random() * remaining.length)];
+
+    const subjectBio = playerBios?.[subjectId];
+    const age = ageFromBirthYear(subjectBio?.birth_year);
+    const isKid = age !== null && age < 16;
+
+    // Filter the pool: kids always get easy questions. Adults get the
+    // natural mix. We always require >= 2 remaining so the picker feels
+    // diverse even for tagged questions.
+    let candidates = pool.filter((q) => !usedTailoredIds.has(q.id));
+    if (isKid) {
+      candidates = candidates.filter((q) => q.difficulty === "easy");
+    }
+    if (candidates.length === 0) {
+      // Fallback: if no easy questions left, drop the kid guard and use any.
+      candidates = pool.filter((q) => !usedTailoredIds.has(q.id));
+    }
+    if (candidates.length === 0) return false;
+
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
     usedTailoredIds.add(pick.id);
 
     let questionText = pick.question_text;
