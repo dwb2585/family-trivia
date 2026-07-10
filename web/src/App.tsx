@@ -415,18 +415,27 @@ export default function App() {
   );
 
   /**
-   * Save the active player's current fact-form values to their profile.
+   * Save the active player's current fact-form values to BOTH the profile
+   * (`profiles` table) and the game (`player_facts` table), then refresh
+   * the live per-player fact-count pill in the lobby.
+   *
    * Used by the lobby's "Save answers" button so players can persist
    * partial edits without having to hit Ready (which also gates on 10+
    * answers and writes player.ready=true).
+   *
+   * Writing to player_facts is what bumps the X/10 counter in the lobby —
+   * `upsertProfile` alone doesn't touch that table, so the count pill
+   * would stay at 0/10 even after Save.
    *
    * Empty values are dropped; keys no longer in the pool are filtered out.
    */
   const handleSaveAnswers = useCallback(async () => {
     if (!me) throw new Error("Pick a player first");
     const pf = factsByPlayer[me.id] || {};
+    await persistFacts(me.id, pf);
     await upsertProfile(me.name, pf, validKeysSet);
-  }, [me, factsByPlayer, validKeysSet]);
+    await refreshPlayerFactCounts();
+  }, [me, factsByPlayer, persistFacts, validKeysSet, refreshPlayerFactCounts]);
 
   const handleReady = useCallback(async () => {
     for (const p of myPlayers) {

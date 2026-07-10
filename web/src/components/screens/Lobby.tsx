@@ -449,7 +449,7 @@ export function Lobby({
                           </span>
                         ) : (
                           <span className="text-cream/40">
-                            Save without marking Ready — your answers stay linked to {activePlayer?.name ?? "you"}.
+                            Saves to {activePlayer?.name ?? "your"} profile and updates the {activeFactsCount}/{minFactsRequired} game count — without marking Ready.
                           </span>
                         )}
                       </div>
