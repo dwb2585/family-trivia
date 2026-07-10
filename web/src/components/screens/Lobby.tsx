@@ -34,6 +34,8 @@ interface LobbyProps {
   onAddPlayer: (name: string) => Promise<void>;
   onReady: () => Promise<void>;
   onStart: () => Promise<void>;
+  /** Persist the active player's typed answers to their profile. */
+  onSaveAnswers?: () => Promise<void>;
   onCopyCode: () => void;
   onLeave: () => void;
   onOpenProfile?: () => void;
@@ -57,6 +59,7 @@ export function Lobby({
   onAddPlayer,
   onReady,
   onStart,
+  onSaveAnswers,
   onCopyCode,
   onLeave,
   onOpenProfile,
@@ -66,6 +69,12 @@ export function Lobby({
   const [showAdd, setShowAdd] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  // Save-answers indicator state. Per-active-player so switching which
+  // family member is filling in shows the right "last saved" stamp.
+  const [saveStatusByPlayer, setSaveStatusByPlayer] = useState<
+    Record<string, { saving: boolean; savedAt: Date | null; error: string | null }>
+  >({});
+  const [savingNow, setSavingNow] = useState(false);
 
   const activePlayer = myPlayers.find((p) => p.id === activePlayerId) ?? myPlayers[0];
   const allMyReady = myPlayers.every((p) => p.ready);
@@ -104,6 +113,40 @@ export function Lobby({
       setSaving(false);
     }
   }
+
+  async function handleSaveAnswers() {
+    if (!activePlayer || !onSaveAnswers) return;
+    const pid = activePlayer.id;
+    setSavingNow(true);
+    setSaveStatusByPlayer((s) => ({
+      ...s,
+      [pid]: { ...(s[pid] ?? { savedAt: null }), saving: true, error: null },
+    }));
+    try {
+      await onSaveAnswers();
+      setSaveStatusByPlayer((s) => ({
+        ...s,
+        [pid]: { saving: false, savedAt: new Date(), error: null },
+      }));
+    } catch (e) {
+      setSaveStatusByPlayer((s) => ({
+        ...s,
+        [pid]: {
+          saving: false,
+          savedAt: s[pid]?.savedAt ?? null,
+          error: (e as Error)?.message ?? "Could not save",
+        },
+      }));
+    } finally {
+      setSavingNow(false);
+    }
+  }
+
+  // Status for whichever player is currently active. Switches automatically
+  // when the user taps a different player chip above.
+  const activeSaveStatus = activePlayer
+    ? saveStatusByPlayer[activePlayer.id] ?? { saving: false, savedAt: null, error: null }
+    : { saving: false, savedAt: null, error: null };
 
   async function handleStart() {
     setStarting(true);
@@ -374,6 +417,44 @@ export function Lobby({
                       disabled={!!activePlayer?.ready}
                     />
                   ))}
+
+                  {onSaveAnswers ? (
+                    <div className="pt-2 space-y-1.5">
+                      <button
+                        type="button"
+                        onClick={handleSaveAnswers}
+                        disabled={
+                          !activePlayer ||
+                          savingNow ||
+                          activeSaveStatus.saving ||
+                          activeFactsCount === 0
+                        }
+                        className={cn(
+                          "w-full h-12 rounded-xl font-display tracking-wide text-base",
+                          "bg-gradient-to-br from-cyan to-violet text-stage",
+                          "shadow-cyan-glow-sm btn-3d",
+                          "disabled:opacity-40 disabled:cursor-not-allowed",
+                        )}
+                      >
+                        {activeSaveStatus.saving ? "Saving…" : `Save ${activePlayer?.name ?? ""}'s answers`}
+                      </button>
+                      <div className="flex items-center justify-center gap-1.5 text-[11px] uppercase tracking-[0.18em] font-bold min-h-[16px]">
+                        {activeSaveStatus.saving ? (
+                          <span className="text-cream/50">Saving…</span>
+                        ) : activeSaveStatus.error ? (
+                          <span className="text-danger">⚠ {activeSaveStatus.error}</span>
+                        ) : activeSaveStatus.savedAt ? (
+                          <span className="text-cyan">
+                            ✓ Saved at {activeSaveStatus.savedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                          </span>
+                        ) : (
+                          <span className="text-cream/40">
+                            Save without marking Ready — your answers stay linked to {activePlayer?.name ?? "you"}.
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
 
                   {onOpenProfile ? (
                     <button

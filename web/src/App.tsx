@@ -414,6 +414,20 @@ export default function App() {
     [defaultFacts],
   );
 
+  /**
+   * Save the active player's current fact-form values to their profile.
+   * Used by the lobby's "Save answers" button so players can persist
+   * partial edits without having to hit Ready (which also gates on 10+
+   * answers and writes player.ready=true).
+   *
+   * Empty values are dropped; keys no longer in the pool are filtered out.
+   */
+  const handleSaveAnswers = useCallback(async () => {
+    if (!me) throw new Error("Pick a player first");
+    const pf = factsByPlayer[me.id] || {};
+    await upsertProfile(me.name, pf, validKeysSet);
+  }, [me, factsByPlayer, validKeysSet]);
+
   const handleReady = useCallback(async () => {
     for (const p of myPlayers) {
       const pf = factsByPlayer[p.id] || {};
@@ -712,6 +726,7 @@ export default function App() {
         onAddPlayer={handleAddPlayer}
         onReady={handleReady}
         onStart={handleStart}
+        onSaveAnswers={handleSaveAnswers}
         onCopyCode={handleCopyCode}
         onLeave={handleLeave}
         onOpenProfile={() => setPhase("profile")}
