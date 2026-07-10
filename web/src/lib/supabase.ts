@@ -77,6 +77,12 @@ export interface Profile {
   full_name: string;
   facts: Record<string, string>;
   avatar_emoji?: string | null;
+  /** Year of birth. Rounds down to age — drives kid-tagged language and trivia banks. */
+  birth_year?: number | null;
+  /** Short occupation text — drives occupation-tailored trivia questions. */
+  occupation?: string | null;
+  /** Free-form interest tags used to pull from curated trivia banks by topic. */
+  interests?: string[] | null;
   updated_at: string;
 }
 

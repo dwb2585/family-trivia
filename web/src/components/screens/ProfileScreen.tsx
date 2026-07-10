@@ -11,6 +11,7 @@ import {
   getProfile,
   upsertProfile,
   setProfileAvatar,
+  setProfileBio,
 } from "@/lib/profiles";
 import {
   createDefaultFact,
@@ -20,6 +21,7 @@ import {
   deriveKey,
 } from "@/lib/defaultFacts";
 import { cn } from "@/lib/utils";
+import { AVAILABLE_TAGS, TAG_LABELS, type InterestTag } from "@/lib/taggedQuestions";
 
 interface ProfileScreenProps {
   initialName?: string;
@@ -56,6 +58,14 @@ export function ProfileScreen({
   const [addingFact, setAddingFact] = useState(false);
   const [editingFactId, setEditingFactId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  // Per-player bio (drives tailored trivia questions).
+  // All fields are optional — players who skip these get no tailored questions.
+  const [birthYear, setBirthYear] = useState<string>("");
+  const [occupation, setOccupation] = useState<string>("");
+  const [interests, setInterests] = useState<string[]>([]);
+  const [bioSaving, setBioSaving] = useState(false);
+  const [bioSavedAt, setBioSavedAt] = useState<Date | null>(null);
+  const [bioError, setBioError] = useState<string | null>(null);
 
   // Load profile when name changes. We pre-fill the answers from the
   // saved profile (cross-game persistence) and use the default-facts pool
@@ -64,6 +74,9 @@ export function ProfileScreen({
     if (!name.trim()) {
       setAnswers({});
       setAvatarEmoji(null);
+      setBirthYear("");
+      setOccupation("");
+      setInterests([]);
       return;
     }
     let cancelled = false;
@@ -81,12 +94,59 @@ export function ProfileScreen({
           ? profile.avatar_emoji
           : null,
       );
+      setBirthYear(
+        profile && profile.birth_year ? String(profile.birth_year) : "",
+      );
+      setOccupation(
+        profile && profile.occupation ? profile.occupation : "",
+      );
+      setInterests(
+        profile && Array.isArray(profile.interests) ? profile.interests : [],
+      );
+      setBioSavedAt(null);
+      setBioError(null);
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
   }, [name, defaultFacts]);
+
+  // Save bio fields with a small debounce so we don't thrash while typing
+  // in the occupation field. Keep it simple — save 600ms after the last
+  // change, or immediately on blur.
+  const bioSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queueBioSave = useCallback(() => {
+    if (!name.trim()) return;
+    if (bioSaveTimer.current) clearTimeout(bioSaveTimer.current);
+    bioSaveTimer.current = setTimeout(() => {
+      void persistBio();
+    }, 700);
+  }, [name, birthYear, occupation, interests]); // eslint-disable-line react-hooks/exhaustive-deps
+  function toggleInterest(tag: string) {
+    setInterests((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+    );
+    queueBioSave();
+  }
+  async function persistBio() {
+    if (!name.trim()) return;
+    setBioSaving(true);
+    setBioError(null);
+    try {
+      const y = birthYear.trim() === "" ? null : Number(birthYear);
+      await setProfileBio(name, {
+        birth_year: y,
+        occupation: occupation.trim() || null,
+        interests,
+      });
+      setBioSavedAt(new Date());
+    } catch (e) {
+      setBioError((e as Error).message);
+    } finally {
+      setBioSaving(false);
+    }
+  }
 
   // Number of answers the user has actually entered (non-empty, in-pool).
   const answeredCount = useMemo(
@@ -388,6 +448,110 @@ export function ProfileScreen({
                     }
                     onPick={handleAvatarPick}
                   />
+                </CardBody>
+              </Card>
+
+              {/* ---- Tailored trivia bio ----
+                  Optional fields that drive ~1-in-5 "personalized" trivia
+                  questions per game (e.g., sports trivia for a kid who's
+                  into sports, occupation trivia for adults). All three are
+                  optional — leave blank to skip tailored questions for this
+                  player. */}
+              <Card className="mb-4">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">
+                    Tailored trivia bio{" "}
+                    <span className="text-cyan text-xs align-middle">(optional)</span>
+                  </CardTitle>
+                  <p className="text-foreground/60 text-xs mt-1">
+                    Helps the host pick a round tailored just for you (e.g., sports trivia if you love sports, or a question about your line of work). Skip any field you'd rather not share.
+                  </p>
+                </CardHeader>
+                <CardBody className="pt-2 space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-cream/70 uppercase tracking-wider mb-1.5">
+                      <span className="mr-1.5">🎂</span>Birth year
+                    </label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min="1900"
+                      max={new Date().getFullYear() + 1}
+                      placeholder="e.g. 2012"
+                      value={birthYear}
+                      onChange={(e) => {
+                        setBirthYear(e.target.value);
+                        queueBioSave();
+                      }}
+                      onBlur={() => void persistBio()}
+                      className="w-full h-10 px-3 rounded-xl bg-card border border-border focus:border-cyan focus:outline-none text-foreground text-sm"
+                    />
+                    <p className="text-cream/50 text-xs mt-1 italic">
+                      Used to set the right difficulty + tone. Stays in your family profile.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-cream/70 uppercase tracking-wider mb-1.5">
+                      <span className="mr-1.5">💼</span>What you do
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={120}
+                      placeholder="e.g. attorney, graphic designer, 12-year-old hockey player"
+                      value={occupation}
+                      onChange={(e) => {
+                        setOccupation(e.target.value);
+                        queueBioSave();
+                      }}
+                      onBlur={() => void persistBio()}
+                      className="w-full h-10 px-3 rounded-xl bg-card border border-border focus:border-cyan focus:outline-none text-foreground text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-cream/70 uppercase tracking-wider mb-2">
+                      <span className="mr-1.5">✨</span>Interests
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {AVAILABLE_TAGS.map((tag) => {
+                        const active = interests.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => toggleInterest(tag)}
+                            aria-pressed={active}
+                            className={cn(
+                              "px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all",
+                              active
+                                ? "bg-gradient-to-br from-cyan to-violet text-stage shadow-cyan-glow-sm border border-transparent"
+                                : "bg-stage border border-border text-foreground/70 hover:border-cyan/60 hover:text-foreground",
+                            )}
+                          >
+                            {active ? "✓ " : ""}
+                            {TAG_LABELS[tag as InterestTag]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.18em] font-bold min-h-[16px]">
+                    {bioError ? (
+                      <span className="text-danger">⚠ {bioError}</span>
+                    ) : bioSaving ? (
+                      <span className="text-cream/50">Saving…</span>
+                    ) : bioSavedAt ? (
+                      <span className="text-cyan">
+                        ✓ Saved at {bioSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    ) : (
+                      <span className="text-cream/40">
+                        Saves automatically when you change anything.
+                      </span>
+                    )}
+                  </div>
                 </CardBody>
               </Card>
 

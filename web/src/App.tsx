@@ -607,11 +607,47 @@ export default function App() {
       }
     }
 
+    // Fetch player bios for tailored-question injection. Best-effort — a
+    // missing or unreadable profile map just means no tailored questions.
+    let playerBios: Record<string, { birth_year?: number | null; occupation?: string | null; interests?: string[] }> = {};
+    try {
+      const playerNameList = (playersAll ?? []).map((p) => p.name);
+      if (playerNameList.length > 0) {
+        const { data: profileRows } = await supabase
+          .from("profiles")
+          .select("full_name, birth_year, occupation, interests")
+          .in("full_name", playerNameList);
+        if (profileRows) {
+          const nameToBio: Record<string, { birth_year: number | null; occupation: string | null; interests: string[] }> = {};
+          for (const row of profileRows as Array<{ full_name: string; birth_year: number | null; occupation: string | null; interests: string[] | null }>) {
+            nameToBio[row.full_name] = {
+              birth_year: row.birth_year,
+              occupation: row.occupation,
+              interests: row.interests ?? [],
+            };
+          }
+          for (const p of playersAll ?? []) {
+            const bio = nameToBio[p.name];
+            if (bio) {
+              playerBios[p.id] = {
+                birth_year: bio.birth_year,
+                occupation: bio.occupation,
+                interests: bio.interests,
+              };
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load player bios, no tailored questions:", e);
+    }
+
     const generated = await generateQuestions({
       gameId: game.id,
       players: (playersAll ?? []) as Player[],
       facts: (factsAll ?? []) as { id: string; player_id: string; fact_key: string; fact_value: string }[],
       defaultFacts,
+      playerBios,
     });
 
     if (generated.length === 0) {

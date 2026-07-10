@@ -3,6 +3,7 @@ import type { DefaultFact } from "./supabase";
 import { shuffle } from "./utils";
 import { pickDistractors as pickDistractorsRich } from "./facts";
 import { fetchAIDistractorsBatch } from "./aiDistractors";
+import { questionsForTags, type TaggedQuestion } from "./taggedQuestions";
 
 export interface GenerateInput {
   gameId: string;
@@ -14,6 +15,19 @@ export interface GenerateInput {
    * The function falls back to fact_key for unknown labels.
    */
   defaultFacts?: DefaultFact[];
+  /**
+   * Per-player bio metadata used to inject "tailored" questions. Keyed by
+   * player id. A player without an entry (or empty entry) gets no tailored
+   * questions — they fall back to the personal-facts pipeline only.
+   */
+  playerBios?: Record<
+    string,
+    {
+      birth_year?: number | null;
+      occupation?: string | null;
+      interests?: string[];
+    }
+  >;
 }
 
 export type QuestionMode = "multiple-choice" | "who-said-it";
@@ -78,6 +92,7 @@ export async function generateQuestions({
   players,
   facts,
   defaultFacts,
+  playerBios,
 }: GenerateInput): Promise<Omit<Question, "id">[]> {
   const mode = chooseQuestionMode(players);
 
@@ -123,9 +138,78 @@ export async function generateQuestions({
 
   const shuffledPlayers = shuffle(players);
 
+  // ── Tailored question bank pool ───────────────────────────────────
+  // For each player with bio data, pull a pool of curated questions
+  // matching their interests + occupation. We pick from this pool with
+  // ~20% probability per visit so a typical 3-round game gets roughly one
+  // tailored question per subject without dominating.
+  const tailoredPoolByPlayer = new Map<string, TaggedQuestion[]>();
+  if (playerBios) {
+    for (const p of players) {
+      const bio = playerBios[p.id];
+      if (!bio) continue;
+      const tags = (bio.interests ?? []).map((t) => t.toLowerCase());
+      if (bio.occupation && bio.occupation.trim()) tags.push("occupation");
+      const pool = questionsForTags(tags);
+      if (pool.length > 0) tailoredPoolByPlayer.set(p.id, pool);
+    }
+  }
+
+  // Track which tailored questions we've already used this game so we don't
+  // repeat the same bank item twice in a round.
+  const usedTailoredIds = new Set<string>();
+
+  /** ~20% chance to inject a tailored question for this subject instead
+   * of pulling from their personal-facts list. We require that the player
+   * actually has a tailored pool available; otherwise always fall back. */
+  function maybeInjectTailored(subjectId: string): boolean {
+    const pool = tailoredPoolByPlayer.get(subjectId);
+    if (!pool || pool.length === 0) return false;
+    if (Math.random() >= 0.2) return false;
+    const remaining = pool.filter((q) => !usedTailoredIds.has(q.id));
+    if (remaining.length === 0) return false;
+    const pick = remaining[Math.floor(Math.random() * remaining.length)];
+    usedTailoredIds.add(pick.id);
+
+    let questionText = pick.question_text;
+    if (pick.subject_aware && questionText.includes("{subject}")) {
+      const subj = players.find((p) => p.id === subjectId);
+      questionText = questionText.replace(/\{subject\}/g, subj?.name ?? "they");
+    }
+
+    // Reshuffle the 4 options + remember the correct index.
+    const indexed = pick.options.map((text, i) => ({ text, isCorrect: i === pick.correct_option_index }));
+    const shuffled = shuffle(indexed);
+    const correctIndex = shuffled.findIndex((o) => o.isCorrect);
+
+    questions.push({
+      game_id: gameId,
+      question_index: idx++,
+      subject_player_id: subjectId,
+      fact_key: `tailored:${pick.tag}`,
+      mode: "multiple-choice",
+      question_text: questionText,
+      options: shuffled.map((o) => o.text),
+      correct_option_index: correctIndex,
+      points: 100,
+    });
+    return true;
+  }
+
   for (const subject of shuffledPlayers) {
     const subjectFacts = factsByPlayer.get(subject.id) ?? [];
-    const picked = shuffle(subjectFacts).slice(0, QUESTIONS_PER_FACT);
+
+    // First question is the tailored-throw — only do this once per subject
+    // to keep question flow varied (one personal-facts before/after each
+    // tailored question).
+    const tailoredDone = maybeInjectTailored(subject.id);
+
+    // After injecting a tailored question, also pull one fewer personal-fact
+    // question to keep total counts roughly stable.
+    const personalCount = tailoredDone
+      ? Math.max(0, QUESTIONS_PER_FACT - 1)
+      : QUESTIONS_PER_FACT;
+    const picked = shuffle(subjectFacts).slice(0, personalCount);
 
     for (const fact of picked) {
       const label = labelFor(fact.fact_key, defaultFacts);

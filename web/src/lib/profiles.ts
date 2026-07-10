@@ -112,3 +112,54 @@ export async function setProfileAvatar(fullName: string, emoji: string): Promise
     );
   if (error) console.warn("Failed to set avatar for", fullName, error);
 }
+
+/**
+ * Update the per-player bio (birth_year, occupation, interests) used to
+ * tailor trivia questions. Leaves facts/avatar untouched.
+ *
+ * `undefined` values clear the field; `null` is treated the same as undefined
+ * for ergonomics with optional UI inputs.
+ */
+export interface BioPatch {
+  birth_year?: number | null;
+  occupation?: string | null;
+  interests?: string[];
+}
+
+export async function setProfileBio(fullName: string, patch: BioPatch): Promise<void> {
+  if (!fullName || !fullName.trim()) return;
+  const trimmed = fullName.trim();
+
+  // Sanitize: drop blank interests, clamp birth_year to a sensible range.
+  const updates: Record<string, unknown> = {};
+  if (patch.birth_year !== undefined) {
+    const y = patch.birth_year;
+    if (y === null) {
+      updates.birth_year = null;
+    } else if (
+      Number.isFinite(y) &&
+      y >= 1900 &&
+      y <= new Date().getFullYear() + 1
+    ) {
+      updates.birth_year = y;
+    } else {
+      updates.birth_year = null;
+    }
+  }
+  if (patch.occupation !== undefined) {
+    const s = (patch.occupation ?? "").trim().slice(0, 120);
+    updates.occupation = s || null;
+  }
+  if (patch.interests !== undefined) {
+    const arr = (patch.interests ?? []).map((t) => String(t).trim().toLowerCase()).filter(Boolean);
+    // Dedup, cap at 8 to keep the profile UI snappy.
+    updates.interests = Array.from(new Set(arr)).slice(0, 8);
+  }
+
+  if (Object.keys(updates).length === 0) return;
+
+  const { error } = await supabase
+    .from("profiles")
+    .upsert({ full_name: trimmed, ...updates }, { onConflict: "full_name" });
+  if (error) console.warn("Failed to set bio for", trimmed, error);
+}

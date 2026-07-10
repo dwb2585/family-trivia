@@ -79,6 +79,10 @@ export function GamePlay({
   const answeredCount = answersForQuestion.length;
   const totalPlayers = players.length;
   const subjectPlayer = players.find((p) => p.id === question.subject_player_id);
+  // Tailored questions have a fact_key prefixed with `tailored:` (set by
+  // generateQuestions when it pulls from taggedQuestions.ts banks). We use
+  // this to show a "Tailored for X" badge above the question.
+  const isTailored = question.fact_key.startsWith("tailored:");
   const isMyQuestion = question.subject_player_id === me.id;
   const showSwitcher = myPlayers.length > 1;
   const isWhoSaidIt = question.mode === "who-said-it";
@@ -176,6 +180,14 @@ export function GamePlay({
           >
             <Card className="mb-4 shadow-cyan-glow-sm">
               <CardBody className="pt-6 pb-7">
+                {isTailored && subjectPlayer ? (
+                  <div className="flex justify-center mb-3">
+                    <span className="text-[10px] uppercase tracking-[0.25em] font-bold px-2.5 py-1 rounded-full bg-gradient-to-r from-violet/30 to-cyan/30 border border-violet/40 text-foreground inline-flex items-center gap-1">
+                      <span aria-hidden="true">✨</span>
+                      <span>Tailored for {subjectPlayer.name}</span>
+                    </span>
+                  </div>
+                ) : null}
                 {!isWhoSaidIt && subjectPlayer ? (
                   <p className="text-cream/60 text-[10px] uppercase tracking-[0.25em] text-center mb-3">
                     About {subjectPlayer.name}
