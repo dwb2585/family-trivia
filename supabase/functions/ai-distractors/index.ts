@@ -59,44 +59,64 @@ function buildPrompt(body: RequestBody): string {
 }
 
 function parseDistractors(text: string): string[] {
-  const trimmed = text.trim();
-  // Strip markdown fences if the model adds them anyway.
-  const stripped = trimmed
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```\s*$/, "");
+  let trimmed = text.trim();
+  // Strip any ```{lang} ... ``` markdown code fences from the model output.
+  trimmed = trimmed.replace(/```(?:json)?\s*\n?/gi, "").replace(/\n?```/g, "");
+  // Strip MiniMax chain-of-thought blocks (some models leak reasoning).
+  trimmed = trimmed.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
-  // Try to find the first JSON array anywhere in the response. Helps
-  // when the model adds preamble like "Sure, here you go:" before the
-  // actual JSON.
-  const arrayMatch = stripped.match(/\[[\s\S]*?\]/);
+  // Prefer fenced code blocks first — they're the most reliable signal of
+  // "this is the answer".
+  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenceMatch) {
+    const inner = fenceMatch[1].trim();
+    try {
+      const parsed = JSON.parse(inner);
+      if (Array.isArray(parsed)) {
+        return sanitizeArray(parsed);
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  // Try the whole response as JSON (bare array).
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) {
+      return sanitizeArray(parsed);
+    }
+  } catch {
+    // fall through
+  }
+
+  // Try the first JSON array. If the rest of the text is short (a brief
+  // preamble like "Sure, here:") treat it as the answer; if there's lots of
+  // surrounding prose, the model is reasoning aloud — refuse and use fallback.
+  const arrayMatch = trimmed.match(/\[[\s\S]*?\]/);
   if (arrayMatch) {
     try {
       const parsed = JSON.parse(arrayMatch[0]);
       if (Array.isArray(parsed)) {
-        return parsed
-          .filter((s) => typeof s === "string" && s.trim())
-          .map((s) => String(s).trim());
+        const withoutArray = trimmed.replace(arrayMatch[0], "").trim();
+        const wordsRemaining = withoutArray.split(/\s+/).filter(Boolean).length;
+        if (wordsRemaining <= 8) {
+          return sanitizeArray(parsed);
+        }
       }
     } catch {
-      // JSON-extract regex matched but parse failed — fall through.
+      // fall through
     }
   }
 
-  // Try the whole response as JSON (in case it's a bare array already).
-  try {
-    const parsed = JSON.parse(stripped);
-    if (Array.isArray(parsed)) {
-      return parsed.filter((s) => typeof s === "string" && s.trim()).map((s) => String(s).trim());
-    }
-  } catch {
-    // fall through to line-splitting
-  }
+  // No usable JSON found — return empty so the caller uses its static fallback.
+  return [];
+}
 
-  // Last resort: split on newlines, strip bullets/numbers/quotes.
-  return trimmed
-    .split(/\r?\n/)
-    .map((l) => l.replace(/^[\-\*\d\.\)\s]+/, "").replace(/^["']|["']$/g, "").trim())
-    .filter((l) => l.length > 0 && l.length < 80);
+function sanitizeArray(parsed: unknown[]): string[] {
+  return parsed
+    .filter((s) => typeof s === "string" && s.trim().length > 0 && s.trim().length < 80)
+    .map((s) => String(s).trim());
 }
 
 Deno.serve(async (req: Request) => {
@@ -140,12 +160,20 @@ Deno.serve(async (req: Request) => {
       },
       body: JSON.stringify({
         model: MINIMAX_MODEL,
-        max_tokens: 200,
-        temperature: 0.9,
+        max_tokens: 400,
+        temperature: 0.7,
+        // Force JSON-output mode if the upstream supports it. MiniMax
+        // OpenAI-compatible endpoint understands response_format with
+        // {"type":"json_object"} (some configurations). Use it as a
+        // best-effort hint.
+        response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
-            content: "You generate plausible wrong answers for trivia multiple-choice questions. Output is JSON only.",
+            content:
+              "You generate plausible wrong answers for trivia multiple-choice questions. " +
+              "Reply ONLY with a JSON array wrapped in a fenced code block (```json\\n[\\n  \"A\",\\n  \"B\",\\n  \"C\"\\n]\\n```). " +
+              "Never include explanation, reasoning, or commentary — JSON array only.",
           },
           { role: "user", content: prompt },
         ],
@@ -164,6 +192,9 @@ Deno.serve(async (req: Request) => {
     const data = (await res.json()) as ChatResp;
     const text = data.choices?.[0]?.message?.content || "";
     const distractors = parseDistractors(text);
+    if (distractors.length === 0) {
+      console.log("EMPTY PARSE. Raw text:", JSON.stringify(text).slice(0, 600));
+    }
 
     return new Response(
       JSON.stringify({ distractors, source: "ai" }),
