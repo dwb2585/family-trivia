@@ -27,7 +27,7 @@ const MINIMAX_BASE = Deno.env.get("MINIMAX_BASE_URL") || "https://api.minimax.io
 const MINIMAX_API_KEY = Deno.env.get("MINIMAX_API_KEY");
 const MINIMAX_MODEL = Deno.env.get("MINIMAX_MODEL") || "MiniMax-M3";
 
-type Kind = "intro" | "outro" | "reaction" | "score_summary" | "tiebreak_tease" | "commentary";
+type Kind = "intro" | "outro" | "reaction" | "score_summary" | "tiebreak_tease" | "commentary" | "read_question";
 
 interface Player {
   name: string;
@@ -170,6 +170,28 @@ function buildUserPrompt(kind: Kind, ctx: Context): string {
       ].filter(Boolean).join("\n");
     }
 
+    case "read_question": {
+      // The host is reading the question aloud as it appears. We give the
+      // model the question verbatim — they may add a tiny intro flavor
+      // ("Here's a juicy one: ...") but the question text itself must be
+      // present word-for-word so the player also hears it clearly.
+      //
+      // We deliberately do NOT include correctAnswer or answer options;
+      // the host announces the question and waits.
+      return [
+        `You are reading a trivia question aloud to a family game.`,
+        `REQUIRED: your line MUST contain the question text below, reproduced VERBATIM, character-for-character. This is the contract with the players — if the question text is missing from your line, the game breaks.`,
+        ctx.questionText ? `Question text (VERBATIM required): "${ctx.questionText}"` : ``,
+        ctx.subjectName ? `The question is about ${ctx.subjectName}'s answer.` : ``,
+        `Optional: you may prepend a short personal intro (under 12 words) before the question text.`,
+        `Format examples (use one of these shapes):`,
+        ` - "Here's the next one. {QUESTION}"`,
+        ` - "Round ${ctx.round ?? "?"}, and this one's a doozy: {QUESTION}"`,
+        ` - Just "{QUESTION}" if nothing clever comes to mind.`,
+        `DO NOT reveal the correct answer or any spoiler.`,
+      ].filter(Boolean).join("\n");
+    }
+
     default:
       return `Deliver a short, in-character host line.`;
   }
@@ -199,6 +221,9 @@ const FALLBACKS: Record<Kind, string[]> = {
   commentary: [
     "You rang? Let's see… this question is a sneaky one.",
     "Oh, a callback to my favorite kind of trivia!",
+  ],
+  read_question: [
+    "Here's the next one — listen up.",
   ],
 };
 
@@ -295,7 +320,7 @@ Deno.serve(async (req: Request) => {
 
   const kind = body.kind;
   const ctx = body.context;
-  const validKinds: Kind[] = ["intro", "outro", "reaction", "score_summary", "tiebreak_tease", "commentary"];
+  const validKinds: Kind[] = ["intro", "outro", "reaction", "score_summary", "tiebreak_tease", "commentary", "read_question"];
   if (!kind || !validKinds.includes(kind)) {
     return new Response(
       JSON.stringify({ error: `Invalid kind. Must be one of: ${validKinds.join(", ")}` }),
@@ -347,11 +372,21 @@ Deno.serve(async (req: Request) => {
 
     const data = (await res.json()) as ChatResp;
     const text = data.choices?.[0]?.message?.content || "";
-    const line = extractLine(text) || pickFallback(kind);
+    const rawLine = extractLine(text) || pickFallback(kind);
 
     // Enforce under-20-words limit as a final safety net.
-    const words = line.split(/\s+/).filter(Boolean);
-    const finalLine = words.length > 20 ? words.slice(0, 20).join(" ") + "…" : line;
+    const words = rawLine.split(/\s+/).filter(Boolean);
+    let finalLine = words.length > 20 ? words.slice(0, 20).join(" ") + "…" : rawLine;
+
+    // For `read_question`, the players need to hear the actual question —
+    // verify the original question text is present (case-insensitive).
+    // If the model dropped it, append it. Bail-out guarantees the contract.
+    if (kind === "read_question" && ctx.questionText && ctx.questionText.trim()) {
+      const q = ctx.questionText.replace(/\s+/g, " ").trim();
+      if (!finalLine.toLowerCase().includes(q.toLowerCase())) {
+        finalLine = `${finalLine.replace(/[.?!…\s]+$/, "")}. ${q}`;
+      }
+    }
 
     return new Response(
       JSON.stringify({ line: finalLine }),

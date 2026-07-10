@@ -51,7 +51,7 @@ export default function App() {
   // Narrator overlay line queue — populated on phase transitions.
   // Consumed by <NarratorOverlay> mounted once near the root.
   const [narratorLines, setNarratorLines] = useState<{
-    kind: "intro" | "outro" | "reaction" | "score_summary" | "tiebreak_tease" | "commentary";
+    kind: "intro" | "outro" | "reaction" | "score_summary" | "tiebreak_tease" | "commentary" | "read_question";
     context: Record<string, unknown>;
     fallback: string;
     autoDismissMs?: number;
@@ -804,6 +804,65 @@ export default function App() {
     () => questions.find((q) => q.question_index === game?.current_question) ?? null,
     [questions, game?.current_question],
   );
+
+  // ---- Narrator: auto-fire lines on game state transitions ----
+  // Auto-narration when a new question appears. Fire `read_question` so
+  // the host reads the question aloud (verbatim, with a tiny intro flourish).
+  // Use a ref keyed on question id so we never re-fire for the same question.
+  const readQuestionFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!currentQuestion || phase !== "playing") return;
+    if (readQuestionFor.current === currentQuestion.id) return;
+    readQuestionFor.current = currentQuestion.id;
+    const subject = players.find((p) => p.id === currentQuestion.subject_player_id);
+    setNarratorLines((prev) => [
+      ...prev,
+      {
+        kind: "read_question",
+        context: {
+          questionText: currentQuestion.question_text,
+          subjectName: subject?.name,
+          round: (game?.current_question ?? 0) + 1,
+          totalRounds: game?.total_questions ?? 5,
+          players: players.map((p) => ({ name: p.name, score: p.score })),
+        },
+        fallback: `Here's the next one: ${currentQuestion.question_text}`,
+        // Don't autoDismiss — let gameplay take the floor after audio ends.
+        autoDismissMs: 0,
+      },
+    ]);
+  }, [currentQuestion, phase, game, players]);
+
+  // Tiny ack when a player submits an answer. Detection watches answer
+  // count rising between renders.
+  const ackedAnswerCount = useRef(0);
+  useEffect(() => {
+    if (phase !== "playing" || !game) return;
+    const c = answers.length;
+    if (c <= ackedAnswerCount.current) {
+      ackedAnswerCount.current = c; // reset on new game (count drops)
+      return;
+    }
+    ackedAnswerCount.current = c;
+    const recent = answers[answers.length - 1];
+    const submitter = players.find((p) => p.id === recent.player_id);
+    if (!submitter) return;
+    setNarratorLines((prev) => [
+      ...prev,
+      {
+        kind: "reaction",
+        context: {
+          playerName: submitter.name,
+          isCorrect: undefined,
+          round: (game.current_question ?? 0) + 1,
+          totalRounds: game.total_questions ?? 5,
+          players: players.map((p) => ({ name: p.name, score: p.score })),
+        },
+        fallback: `Locked in from ${submitter.name}!`,
+        autoDismissMs: 0,
+      },
+    ]);
+  }, [answers.length, phase, game, players, answers]);
 
   const myAnswer = useMemo(
     () =>
