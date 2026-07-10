@@ -4,6 +4,7 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Marquee } from "@/components/ui/Marquee";
 import { LeaveButton } from "@/components/ui/LeaveButton";
 import { FamilyMemberSelect } from "@/components/ui/Select";
+import { VoiceInputField } from "@/components/ui/VoiceInputField";
 import { FAMILY } from "@/lib/family";
 import type { DefaultFact } from "@/lib/supabase";
 import {
@@ -434,19 +435,11 @@ function DefaultAnswerField({
       <span className="block text-xs font-bold text-cream/70 uppercase tracking-wider mb-1.5">
         <span className="mr-1.5">{fact.emoji}</span> {fact.prompt}
       </span>
-      <input
-        type="text"
+      <VoiceInputField
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        maxLength={120}
-        placeholder="…"
-        className={cn(
-          "w-full h-11 px-3 rounded-lg",
-          "bg-stage/60 border border-border",
-          "text-foreground placeholder:text-foreground/30",
-          "focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm",
-          "transition-colors",
-        )}
+        onChange={onChange}
+        placeholder="Type or tap mic to dictate…"
+        ariaLabel={`Voice input for ${fact.label}`}
       />
     </label>
   );

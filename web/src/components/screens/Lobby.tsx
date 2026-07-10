@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Marquee } from "@/components/ui/Marquee";
 import { LeaveButton } from "@/components/ui/LeaveButton";
 import { FamilyMemberSelect } from "@/components/ui/Select";
+import { VoiceInputField } from "@/components/ui/VoiceInputField";
 import { FAMILY, avatarFor } from "@/lib/family";
 import type { Player, DefaultFact } from "@/lib/supabase";
 import { cn, uuid } from "@/lib/utils";
@@ -583,20 +584,14 @@ function FactField({ fact, value, onChange, disabled }: FactFieldProps) {
           {filled ? "✓" : "…"}
         </span>
       </div>
-      <input
-        type="text"
+      <VoiceInputField
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={onChange}
+        placeholder={fact.prompt}
         maxLength={120}
         disabled={disabled}
-        placeholder={fact.prompt}
-        className={cn(
-          "w-full h-10 px-3 rounded-lg text-sm",
-          "bg-stage/60 border border-border",
-          "text-foreground placeholder:text-foreground/30",
-          "focus:outline-none focus:border-cyan focus:shadow-cyan-glow-sm",
-          "transition-colors",
-        )}
+        inputClassName="h-10 text-sm"
+        ariaLabel={`Voice input for ${fact.label}`}
       />
     </label>
   );
