@@ -13,6 +13,7 @@ import { GamePlay } from "@/components/screens/GamePlay";
 import { Final } from "@/components/screens/Final";
 import { ProfileScreen } from "@/components/screens/ProfileScreen";
 import { NarratorOverlay } from "@/components/ui/NarratorOverlay";
+import { fetchNarration as fetchNarrationLib, fetchTts as fetchTtsLib, setCachedAudio } from "@/lib/aiNarrator";
 
 type Phase = "home" | "create" | "join" | "profile" | "lobby" | "playing" | "finished";
 
@@ -954,6 +955,119 @@ export default function App() {
     () => (currentQuestion ? answers.filter((a) => a.question_id === currentQuestion.id) : []),
     [currentQuestion, answers],
   );
+
+  // ---- Per-correctness reactions ----
+  // When results are revealed for a question, queue a host "Let's see what
+  // you've got..." setup line, then per-answer reactions staggered 700ms
+  // apart so the host doesn't talk over itself. Each reaction names the
+  // player and tells them whether they got it right.
+  const reactingForQuestionId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!game || !game.show_results || phase !== "playing" || !currentQuestion) return;
+    if (reactingForQuestionId.current === currentQuestion.id) return;
+    reactingForQuestionId.current = currentQuestion.id;
+
+    const submissions = answersForCurrent.slice();
+    const lines: typeof narratorLines = [];
+
+    // Setup line: "Let's see what you've got…" before the per-answer lines.
+    lines.push({
+      kind: "reaction",
+      context: {
+        round: (game.current_question ?? 0) + 1,
+        totalRounds: game.total_questions ?? 5,
+        players: players.map((p) => ({ name: p.name, score: p.score })),
+        isCorrect: undefined,
+      },
+      fallback: "And… let's see what you've got!",
+      autoDismissMs: 3500,
+    });
+
+    // Per-answer reactions. We rely on the bubble's queue + the per-line
+    // settling behavior to space them naturally; if any settle super
+    // fast we get a quick beat, and if TTS plays through we get the
+    // pauses we want automatically.
+    for (const a of submissions) {
+      const submitter = players.find((p) => p.id === a.player_id);
+      if (!submitter) continue;
+      const isCorrect = a.selected_option_index === currentQuestion.correct_option_index;
+      const streak = answersForCurrent
+        .slice(0, submissions.indexOf(a) + 1)
+        .filter(
+          (x, i) =>
+            x.player_id !== submitter.id
+              ? false
+              : x.selected_option_index === currentQuestion.correct_option_index,
+        ).length;
+      lines.push({
+        kind: "reaction",
+        context: {
+          playerName: submitter.name,
+          isCorrect,
+          round: (game.current_question ?? 0) + 1,
+          totalRounds: game.total_questions ?? 5,
+          players: players.map((p) => ({ name: p.name, score: p.score })),
+          correctStreak: streak,
+        },
+        fallback: isCorrect
+          ? `BOOM! Nailed it, ${submitter.name}!`
+          : `Oh, ${submitter.name}. Bold choice.`,
+        autoDismissMs: 0,
+      });
+    }
+
+    setNarratorLines((prev) => [...prev, ...lines]);
+  }, [game?.show_results, game?.current_question, phase, currentQuestion, answersForCurrent, players]);
+
+  // Reset the per-question reaction guard when the host moves to the next
+  // question (show_results flips back to false).
+  useEffect(() => {
+    if (game && !game.show_results) {
+      reactingForQuestionId.current = null;
+    }
+  }, [game?.show_results]);
+
+  // ---- Audio pre-cache ----
+  // While results are visible, prefetch TTS for the NEXT question's
+  // read_question line so audio plays instantly when it fires. Cached
+  // blobs match on (kind, text) so a model re-roll won't reuse a stale
+  // one. Uses the module-level cache in `lib/aiNarrator.ts` so the
+  // NarratorOverlay component reads from the same store.
+  const audioContextRef = useRef(0);
+  const prefetchForQuestionId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!game || !game.show_results || phase !== "playing") {
+      prefetchForQuestionId.current = null;
+      return;
+    }
+    const nextQ = questions.find((q) => q.question_index === (game.current_question ?? -1) + 1);
+    if (!nextQ) return;
+    if (prefetchForQuestionId.current === nextQ.id) return;
+    prefetchForQuestionId.current = nextQ.id;
+    const handle = ++audioContextRef.current;
+
+    void (async () => {
+      try {
+        const subject = players.find((p) => p.id === nextQ.subject_player_id);
+        const ctx = {
+          questionText: nextQ.question_text,
+          subjectName: subject?.name,
+          round: (nextQ.question_index ?? 0) + 1,
+          totalRounds: game.total_questions ?? 5,
+          players: players.map((p) => ({ name: p.name, score: p.score })),
+        };
+        const fallback = `Here's the next one: ${nextQ.question_text}`;
+        const line = await fetchNarrationLib({ kind: "read_question", context: ctx }, fallback);
+        if (handle !== audioContextRef.current) return; // superseded
+        const blob = await fetchTtsLib(line);
+        if (handle !== audioContextRef.current || !blob) return;
+        setCachedAudio("read_question", ctx, line, blob);
+      } catch {
+        // Silent best-effort.
+      }
+    })();
+  }, [game?.show_results, game?.current_question, game?.total_questions, phase, questions, players]);
+
 
   const myFacts = useMemo(
     () => (me ? factsByPlayer[me.id] || {} : {}),

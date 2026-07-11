@@ -1,6 +1,6 @@
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { fetchNarration, fetchTts, playAudioBlob } from "@/lib/aiNarrator";
+import { fetchNarration, fetchTts, playAudioBlob, getCachedAudio, setCachedAudio } from "@/lib/aiNarrator";
 import { cn } from "@/lib/utils";
 
 export type NarratorKind =
@@ -116,8 +116,17 @@ export function NarratorOverlay({
       // Only attempt voice playback if the user explicitly opted in.
       // (Browsers — iOS Safari especially — block autoplay otherwise.)
       if (voiceEnabled && line) {
-        const blob = await fetchTts(line, undefined, ac.signal);
-        if (cancelled || !blob) return;
+        // Try the cache first (App.tsx prefetches the next question's
+        // audio while results are revealed). If a blob is sitting there
+        // and the text matches, skip the network fetch.
+        let blob: Blob | null = getCachedAudio(current.kind, current.context, line);
+        if (!blob) {
+          blob = await fetchTts(line, undefined, ac.signal);
+          if (!blob || cancelled) return;
+          // Populate cache for next time (or for another component to share).
+          setCachedAudio(current.kind, current.context, line, blob);
+        }
+        if (cancelled) return;
         // Stop any prior audio before playing the new one.
         if (audioRef.current) {
           audioRef.current.pause();

@@ -19,6 +19,83 @@ interface NarratorResponse {
   error?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Module-level audio cache. Lets App.tsx prefetch the next question's TTS
+// while the current results are being revealed, so playback is instant when
+// the host reads the next question aloud.
+// Keyed by `${kind}:${contextHash}`. Blobs are guaranteed-equal only when the
+// prefetched text matches the live request; otherwise the caller fetches
+// fresh and the cache entry is overwritten.
+// ---------------------------------------------------------------------------
+interface CacheEntry {
+  text: string;
+  blob: Blob;
+  ts: number;
+}
+const audioCache = new Map<string, CacheEntry>();
+const MAX_CACHE = 6;
+
+/** Cheap, stable hash of a JSON-serializable context object. Good enough
+ * for cache keys (small inputs, no security concerns). */
+function contextHash(ctx: object): string {
+  // Sort keys for stability.
+  const sortedKeys = Object.keys(ctx).sort();
+  let h = "";
+  for (const k of sortedKeys) {
+    h += `${k}=${String((ctx as Record<string, unknown>)[k])};`;
+  }
+  return h;
+}
+
+/** Look up a cached audio blob for a (kind, context) pair. If found and the
+ * text hasn't drifted (model could re-roll), return the blob. Accepts a
+ * loosely-typed context so callers don't have to massage their domain types. */
+export function getCachedAudio(
+  kind: NarratorRequest["kind"],
+  context: object,
+  expectedText: string,
+): Blob | null {
+  const key = `${kind}:${contextHash(context)}`;
+  const entry = audioCache.get(key);
+  if (!entry) return null;
+  if (entry.text !== expectedText) return null;
+  // Bump freshness — keep this entry around longer than older ones.
+  entry.ts = Date.now();
+  return entry.blob;
+}
+
+/** Populate the audio cache. Caps total entries; oldest-first eviction. */
+export function setCachedAudio(
+  kind: NarratorRequest["kind"],
+  context: object,
+  text: string,
+  blob: Blob,
+): void {
+  const key = `${kind}:${contextHash(context)}`;
+  if (audioCache.has(key)) {
+    audioCache.delete(key);
+  } else if (audioCache.size >= MAX_CACHE) {
+    // Find oldest by timestamp; evict it.
+    let oldestKey: string | null = null;
+    let oldestTs = Infinity;
+    for (const [k, v] of audioCache.entries()) {
+      if (v.ts < oldestTs) {
+        oldestTs = v.ts;
+        oldestKey = k;
+      }
+    }
+    if (oldestKey) audioCache.delete(oldestKey);
+  }
+  audioCache.set(key, { text, blob, ts: Date.now() });
+}
+
+/** Returns the cache key for a (kind, context) pair. Exposed so prefetchers
+ * in App.tsx can pre-fill the cache for the same key NarratorOverlay will
+ * look up. */
+export function audioCacheKey(kind: NarratorRequest["kind"], context: Record<string, unknown>): string {
+  return `${kind}:${contextHash(context)}`;
+}
+
 /**
  * Fetch a single narrator line. Returns the line as text, or `fallback` on
  * any error. Caller is responsible for trying to play audio via fetchTts.
